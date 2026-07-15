@@ -10,7 +10,6 @@ class RagChunkConfig:
 class RagConfig:
     RETRIEVER = os.getenv("RAG_RETRIEVER", "hybrid")
     SEARCH_LIMIT = int(os.getenv("RAG_SEARCH_LIMIT", "5"))
-    ENABLE_RERANK = os.getenv("RAG_ENABLE_RERANK", "false").lower() == "true"
     KEYWORD_CANDIDATE_LIMIT = int(os.getenv("RAG_KEYWORD_CANDIDATE_LIMIT", "20"))
     VECTOR_CANDIDATE_LIMIT = int(os.getenv("RAG_VECTOR_CANDIDATE_LIMIT", "20"))
     RERANK_CANDIDATE_LIMIT = int(os.getenv("RAG_RERANK_CANDIDATE_LIMIT", "20"))

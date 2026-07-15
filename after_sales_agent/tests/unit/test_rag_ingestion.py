@@ -3,11 +3,11 @@ from pathlib import Path
 import sys
 from types import SimpleNamespace
 
-from knowledge.ingestion.cleaner import clean_text
+from knowledge.ingestion.cleaner import clean_search_text, clean_text
 from knowledge.ingestion.loader import load_excel_qa_documents, load_source_documents
 from knowledge.ingestion.milvus_store import InMemoryVectorStore, MilvusVectorStore
 from knowledge.ingestion.pipeline import build_rag_documents
-from knowledge.ingestion.splitter import split_documents
+from knowledge.ingestion.splitter import split_documents, tokenize_search_text
 from knowledge.ingestion.vectorizer import BgeM3Vectorizer
 
 
@@ -23,6 +23,11 @@ class FakeBgeM3Model:
         self.batch_size = batch_size
         self.max_length = max_length
         return {"dense_vecs": [[0.1, 0.2, 0.3, 0.4] for _ in texts]}
+
+
+def test_clean_and_tokenize_search_text_normalizes_case_and_punctuation():
+    assert clean_search_text(" 退货，SHOE-008！ ") == "退货 shoe 008"
+    assert tokenize_search_text("退货，SHOE-008！") == ["退货", "shoe", "008"]
 
 
 def test_demo_shoe_catalog_is_loaded_as_product_knowledge():
