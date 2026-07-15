@@ -1,4 +1,8 @@
+import pytest
+from rank_bm25 import BM25Okapi
+
 from domain.models import PolicySnippet
+from knowledge.ingestion.splitter import tokenize_search_text
 from knowledge.retrieval.keyword_retriever import KeywordPolicyRetriever
 
 
@@ -33,7 +37,7 @@ def test_bm25_ranks_document_matching_more_query_terms_first():
     assert results[0].score > results[1].score > 0
 
 
-def test_bm25_scores_respect_policy_snippet_contract():
+def test_bm25_returns_raw_scores():
     sections = [
         PolicySnippet(title="A", content="alpha omega", score=0.0),
         PolicySnippet(title="B", content="alpha", score=0.0),
@@ -43,8 +47,16 @@ def test_bm25_scores_respect_policy_snippet_contract():
     ]
 
     results = KeywordPolicyRetriever(sections=sections).search("alpha omega", limit=2)
+    tokenized_corpus = [
+        tokenize_search_text(f"{section.title}\n{section.content}") for section in sections
+    ]
+    expected_scores = BM25Okapi(tokenized_corpus).get_scores(
+        tokenize_search_text("alpha omega")
+    )
 
-    assert [PolicySnippet.model_validate(item.model_dump()) for item in results] == results
+    assert [item.score for item in results] == pytest.approx(
+        [float(expected_scores[0]), float(expected_scores[1])]
+    )
 
 
 def test_bm25_handles_empty_corpus_and_limit():

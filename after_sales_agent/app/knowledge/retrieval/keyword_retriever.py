@@ -39,9 +39,8 @@ class KeywordPolicyRetriever:
             if score > 0
         ]
         scored.sort(key=lambda item: (-item[1], item[0]))
-        max_score = scored[0][1] if scored else 1.0
         return [
-            self.sections[index].model_copy(update={"score": score / max_score})
+            self.sections[index].model_copy(update={"score": score})
             for index, score in scored[:limit]
         ]
 

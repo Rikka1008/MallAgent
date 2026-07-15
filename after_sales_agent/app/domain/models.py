@@ -90,7 +90,7 @@ class PolicySnippet(BaseModel):
 
     title: str = Field(description="政策标题")
     content: str = Field(description="政策正文片段")
-    score: float = Field(ge=0, le=1, description="相关性分数")
+    score: float = Field(ge=0, description="非负检索相关性分数")
 
 
 class PolicyDecision(BaseModel):
