@@ -17,15 +17,15 @@ spring:
         login-password: druid
   data:
     mongodb:
-      uri: mongodb://root:123456@192.168.80.128:27017/mall-port?authSource=admin
+      uri: mongodb://root:123456@localhost:27017/mall-port?authSource=admin
     redis:
-      host: 192.168.80.128 # Redis服务器地址
+      host: localhost # Redis服务器地址
       database: 0 # Redis数据库索引（默认为0）
       port: 6379 # Redis服务器连接端口
       password: 123456
       timeout: 300ms # 连接超时时间（毫秒）
   rabbitmq:
-    host: 192.168.80.128
+    host: localhost
     port: 5672
     virtual-host: /mall
     username: root

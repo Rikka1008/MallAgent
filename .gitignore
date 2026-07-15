@@ -5,7 +5,8 @@
 **/__pycache__/
 *.py[cod]
 *.egg-info/
-.pytest_cache/
+**/.pytest_cache/
+**/.ruff_cache/
 **/data/rag_index/
 **/app/data/rag_index/
 
@@ -14,12 +15,14 @@
 **/dist/
 **/dist-ssr/
 **/coverage/
+**/build/
 
 # Java/Maven builds
 **/target/
 
 # Logs and runtime output
 *.log
+**/logs/
 /output/
 /.uploads/
 
@@ -27,6 +30,7 @@
 /.agents/
 /.superpowers/
 /.codex/
+/docs/superpowers/
 
 # IDE and OS files
 .idea/
