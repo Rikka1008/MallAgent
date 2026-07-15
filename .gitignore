@@ -28,6 +28,7 @@
 
 # Local agent/tool state
 /.agents/
+/.worktrees/
 /.superpowers/
 /.codex/
 /docs/superpowers/
