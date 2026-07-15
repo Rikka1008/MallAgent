@@ -13,8 +13,6 @@ MallAgent 是一个面向电商售后场景的完整源码项目。它在开源 
 | `after_sales_agent/` | 售后智能客服、RAG、记忆和商城工具调用 | Python 3.13、FastAPI、LangGraph、Milvus |
 | `ops/vm-dependencies/` | 本地开发所需的统一基础设施 | Docker Compose |
 
-`migrations/`、`scripts/` 和 `tests/` 是完整源码仓库的一部分，分别用于数据库演进、运维/数据导入和自动化测试，不应删除。
-
 ## 整体架构
 
 ```mermaid
