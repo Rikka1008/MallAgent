@@ -44,9 +44,7 @@ class MilvusVectorRetriever:
                 entity = item.get("entity", {}) or {}
                 metadata = entity.get("metadata", {}) or {}
                 content = entity.get("text", "") or ""
-                score = item.get("distance")
-                if score is None:
-                    score = item.get("score", 0.0)
+                score = item.get("distance", 0.0) or item.get("score", 0.0)
                 normalized.append(
                     {
                         "title": metadata.get("title")

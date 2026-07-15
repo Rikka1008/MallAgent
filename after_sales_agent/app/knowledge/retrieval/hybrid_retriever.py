@@ -24,11 +24,15 @@ class HybridRetriever:
         self.vectorizer = vectorizer
         self.reranker = reranker or BgeReranker()
         self.keyword_retriever = keyword_retriever
-        self.vector_retriever = vector_retriever or MilvusVectorRetriever(
-            client=client,
-            collection_name=collection_name,
-            dimension=dimension,
-            vectorizer=vectorizer,
+        self.vector_retriever = (
+            vector_retriever
+            if vector_retriever is not None
+            else MilvusVectorRetriever(
+                client=client,
+                collection_name=collection_name,
+                dimension=dimension,
+                vectorizer=vectorizer,
+            )
         )
         self.degradation_events: list[dict] = []
 

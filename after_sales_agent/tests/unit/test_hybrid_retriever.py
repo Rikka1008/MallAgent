@@ -78,6 +78,34 @@ async def test_hybrid_retriever_delegates_to_injected_vector_retriever():
 
 
 @pytest.mark.asyncio
+async def test_hybrid_retriever_preserves_falsey_vector_retriever_injection():
+    class FalseyVectorRetriever:
+        def __init__(self):
+            self.calls = []
+
+        def __bool__(self):
+            return False
+
+        async def search(self, query, limit=5):
+            self.calls.append((query, limit))
+            return []
+
+    class ExplodingClient:
+        async def has_collection(self, collection_name):
+            raise AssertionError("injected vector retriever should be used")
+
+    vector_retriever = FalseyVectorRetriever()
+    retriever = HybridRetriever(
+        client=ExplodingClient(),
+        vector_retriever=vector_retriever,
+        reranker=IdentityReranker(),
+    )
+
+    assert await retriever.search("return", limit=2) == []
+    assert vector_retriever.calls == [("return", 2)]
+
+
+@pytest.mark.asyncio
 async def test_hybrid_retriever_falls_back_to_keyword_when_milvus_fails():
     class BrokenClient:
         async def has_collection(self, collection_name):

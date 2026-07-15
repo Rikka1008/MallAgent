@@ -107,3 +107,29 @@ async def test_search_propagates_missing_collection_before_embedding():
 
     assert vectorizer.embed_calls == []
     assert client.calls == [("has_collection", "missing_collection")]
+
+
+@pytest.mark.asyncio
+async def test_search_falls_back_to_score_when_distance_is_zero():
+    class ZeroDistanceClient(FakeMilvusClient):
+        async def search(self, **kwargs):
+            return [
+                [
+                    {
+                        "distance": 0.0,
+                        "score": 0.8,
+                        "entity": {"text": "exact match", "metadata": {}},
+                    }
+                ]
+            ]
+
+    retriever = MilvusVectorRetriever(
+        client=ZeroDistanceClient(),
+        collection_name="unit_collection",
+        dimension=4,
+        vectorizer=FakeVectorizer(),
+    )
+
+    results = await retriever.search("return")
+
+    assert results[0]["score"] == 0.8
