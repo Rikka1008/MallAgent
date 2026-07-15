@@ -13,7 +13,6 @@ from config import AppConfig, MallConfig
 from core.database.redis_client import RedisClient
 from core.database.SQLAlchemy import SqlAlchemyPool
 from core.database.milvus_client import MilvusClient
-from knowledge.ingestion.models import DocumentChunk
 from knowledge.ingestion.vectorizer import BgeM3Vectorizer
 from services.memory.checkpoint import checkpoint_manager
 from services.memory.semantic import (
@@ -146,10 +145,8 @@ async def get_semantic_memory_service() -> SemanticMemoryService:
         vectorizer = BgeM3Vectorizer()
 
         async def embed(text: str) -> list[float]:
-            records = await asyncio.to_thread(
-                vectorizer.vectorize, [DocumentChunk(text=text, metadata={})]
-            )
-            return records[0].embedding
+            vectors = await asyncio.to_thread(vectorizer.embed_texts, [text])
+            return vectors[0]
 
         _semantic_memory_service = SemanticMemoryService(
             store=MilvusBaseStore(

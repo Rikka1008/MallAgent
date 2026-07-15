@@ -25,6 +25,23 @@ class FakeBgeM3Model:
         return {"dense_vecs": [[0.1, 0.2, 0.3, 0.4] for _ in texts]}
 
 
+def test_bge_m3_embed_texts_returns_float_vectors_without_ingestion_models():
+    vectorizer = BgeM3Vectorizer(model=FakeBgeM3Model(), dimension=4)
+
+    assert vectorizer.embed_texts(["query"])[0] == [0.1, 0.2, 0.3, 0.4]
+
+
+def test_bge_m3_embed_texts_validates_every_vector_dimension():
+    class WrongDimensionModel:
+        def encode(self, texts, **kwargs):
+            return {"dense_vecs": [[0.1, 0.2] for _ in texts]}
+
+    with pytest.raises(ValueError, match="4"):
+        BgeM3Vectorizer(model=WrongDimensionModel(), dimension=4).embed_texts(
+            ["query"]
+        )
+
+
 def test_clean_and_tokenize_search_text_normalizes_case_and_punctuation():
     assert clean_search_text(" 退货，SHOE-008！ ") == "退货 shoe 008"
     assert tokenize_search_text("退货，SHOE-008！") == ["退货", "shoe", "008"]
