@@ -1,4 +1,5 @@
 import json
+import logging
 from collections.abc import AsyncIterator
 from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
 
@@ -10,17 +11,18 @@ from adapters.ecommerce_gateway import EcommerceGateway
 from agent.context import AgentRuntimeContext
 from api.dependencies import (
     get_case_service,
+    get_conversation_lifecycle,
     get_gateway,
     get_idempotency_store,
     get_main_agent,
     get_memory_store,
-    get_semantic_memory_service,
 )
 from api.schemas import (
     AuthSessionResponse,
     AuthenticatedUser,
     ChatRequest,
     ChatResponse,
+    ConversationSessionResponse,
     MallLoginRequest,
 )
 from config import MallConfig
@@ -28,9 +30,16 @@ from domain.errors import AuthenticationError, PermissionDeniedError
 from domain.models import UserMemory
 from diagnostics.readiness import check_readiness
 from services.chat_service import ChatService
+from services.conversations.lifecycle import (
+    ConversationBusyError,
+    ConversationLifecycle,
+    ConversationUnavailableError,
+)
+from services.conversations.models import ConversationTurn
 from services.memory.stores import PostgresBaseStore
 
 router = APIRouter()
+logger = logging.getLogger("after_sales.api.routes")
 
 
 def _sse(event: str, data: dict) -> str:
@@ -53,24 +62,25 @@ async def _build_context(
     request: ChatRequest,
     gateway: EcommerceGateway,
     memory_store: PostgresBaseStore,
-    semantic_memory,
     idempotency_store,
     case_service,
+    conversation_lifecycle: ConversationLifecycle,
+    member=None,
 ) -> AgentRuntimeContext:
-    member = await gateway.get_current_member()
+    member = member or await gateway.get_current_member()
     item = await memory_store.get((member.user_id, "preferences"), "profile")
     memory = UserMemory(user_id=member.user_id, **item.value) if item else None
-    recalled = await semantic_memory.recall(member.user_id, request.message)
-    if recalled:
-        memory = memory or UserMemory(user_id=member.user_id)
-        memory.preference_summary = "\n".join(recalled)
     case = await case_service.get_or_create(member.user_id, request.session_id)
+    previous_conversations = await conversation_lifecycle.recall(member.user_id)
     return AgentRuntimeContext(
         user_id=member.user_id,
         session_id=request.session_id,
         gateway=gateway,
         case_context={"case": case},
         long_term_memory=memory,
+        conversation_summaries=[
+            item.summary_text for item in previous_conversations if item.summary_text
+        ],
         idempotency_store=idempotency_store,
     )
 
@@ -80,22 +90,41 @@ async def _process_chat_turn(
     main_agent,
     gateway: EcommerceGateway,
     memory_store: PostgresBaseStore,
-    semantic_memory,
     idempotency_store,
     case_service,
+    conversation_lifecycle: ConversationLifecycle,
 ) -> ChatResponse:
+    lease_token = None
     try:
+        member = await gateway.get_current_member()
+        lease_token = await conversation_lifecycle.begin_turn(
+            request.session_id, member.user_id
+        )
         context = await _build_context(
             request,
             gateway,
             memory_store,
-            semantic_memory,
             idempotency_store,
             case_service,
+            conversation_lifecycle,
+            member=member,
         )
         reply = await ChatService(main_agent).reply(
             request.message, request.session_id, context
         )
+        try:
+            await conversation_lifecycle.record_turn(
+                request.session_id,
+                member.user_id,
+                ConversationTurn(user_text=request.message, assistant_text=reply),
+            )
+        except Exception:
+            # Mall 写操作可能已经成功，不能因记忆持久化故障让前端误判并重放请求。
+            logger.exception(
+                "会话轮次持久化失败 conversation_id=%s user_id=%s",
+                request.session_id,
+                member.user_id,
+            )
         return ChatResponse(
             session_id=request.session_id,
             reply=reply,
@@ -105,6 +134,14 @@ async def _process_chat_turn(
             handoff_required=False,
         )
     finally:
+        if lease_token is not None:
+            try:
+                await conversation_lifecycle.release_turn(request.session_id, lease_token)
+            except Exception:
+                logger.warning(
+                    "释放会话处理租约失败 conversation_id=%s",
+                    request.session_id,
+                )
         close = getattr(gateway, "close", None)
         if close is not None:
             await close()
@@ -204,6 +241,44 @@ def logout(response: Response) -> AuthSessionResponse:
     return AuthSessionResponse(authenticated=False)
 
 
+def _conversation_response(conversation) -> ConversationSessionResponse:
+    return ConversationSessionResponse(
+        conversation_id=conversation.conversation_id,
+        status=conversation.status.value,
+        last_active_at=conversation.last_active_at,
+        created_at=conversation.created_at,
+    )
+
+
+@router.get("/api/conversations/active", response_model=ConversationSessionResponse)
+async def get_active_conversation(
+    gateway: EcommerceGateway = Depends(get_gateway),
+    lifecycle: ConversationLifecycle = Depends(get_conversation_lifecycle),
+) -> ConversationSessionResponse:
+    member = await gateway.get_current_member()
+    conversation = await lifecycle.get_active(member.user_id)
+    if conversation is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="没有可续接的会话。")
+    return _conversation_response(conversation)
+
+
+@router.post(
+    "/api/conversations",
+    response_model=ConversationSessionResponse,
+    status_code=status.HTTP_201_CREATED,
+)
+async def create_conversation(
+    gateway: EcommerceGateway = Depends(get_gateway),
+    lifecycle: ConversationLifecycle = Depends(get_conversation_lifecycle),
+) -> ConversationSessionResponse:
+    member = await gateway.get_current_member()
+    try:
+        conversation = await lifecycle.create_new(member.user_id)
+    except ConversationBusyError as exc:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from exc
+    return _conversation_response(conversation)
+
+
 @router.post("/api/auth/login")
 async def login_to_mall(request: MallLoginRequest) -> JSONResponse:
     try:
@@ -238,9 +313,9 @@ async def chat_stream(
     main_agent=Depends(get_main_agent),
     gateway: EcommerceGateway = Depends(get_gateway),
     memory_store: PostgresBaseStore = Depends(get_memory_store),
-    semantic_memory=Depends(get_semantic_memory_service),
     idempotency_store=Depends(get_idempotency_store),
     case_service=Depends(get_case_service),
+    conversation_lifecycle: ConversationLifecycle = Depends(get_conversation_lifecycle),
 ) -> StreamingResponse:
     async def events() -> AsyncIterator[str]:
         yield _sse("message_start", {"session_id": request.session_id})
@@ -250,9 +325,9 @@ async def chat_stream(
                 main_agent,
                 gateway,
                 memory_store,
-                semantic_memory,
                 idempotency_store,
                 case_service,
+                conversation_lifecycle,
             )
             yield _sse("message_delta", {"delta": response.reply})
             yield _sse("message_end", response.model_dump(exclude={"reply"}))
@@ -260,7 +335,21 @@ async def chat_stream(
             yield _sse("error", {"status": 401, "detail": str(exc)})
         except PermissionDeniedError as exc:
             yield _sse("error", {"status": 403, "detail": str(exc)})
-        except Exception as exc:
-            yield _sse("error", {"status": 500, "detail": str(exc)})
+        except ConversationUnavailableError as exc:
+            yield _sse(
+                "error",
+                {"status": 409, "code": "conversation_expired", "detail": str(exc)},
+            )
+        except ConversationBusyError as exc:
+            yield _sse(
+                "error",
+                {"status": 409, "code": "conversation_busy", "detail": str(exc)},
+            )
+        except Exception:
+            logger.exception("聊天流处理失败 conversation_id=%s", request.session_id)
+            yield _sse(
+                "error",
+                {"status": 500, "detail": "服务暂时不可用，请稍后重试。"},
+            )
 
     return StreamingResponse(events(), media_type="text/event-stream")

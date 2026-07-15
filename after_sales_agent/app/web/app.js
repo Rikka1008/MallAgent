@@ -1,4 +1,4 @@
-const sessionId = `S-${Date.now()}`;
+let sessionId = null;
 const form = document.querySelector("#chat-form");
 const input = document.querySelector("#message-input");
 const sendButton = document.querySelector("#send-button");
@@ -8,6 +8,7 @@ const authStatus = document.querySelector("#auth-status");
 const authStatusText = document.querySelector("#auth-status-text");
 const authUser = document.querySelector("#auth-user");
 const logoutButton = document.querySelector("#logout-button");
+const newConversationButton = document.querySelector("#new-conversation-button");
 const authGate = document.querySelector("#auth-gate");
 const authGateTitle = document.querySelector("#auth-gate-title");
 const authGateMessage = document.querySelector("#auth-gate-message");
@@ -29,7 +30,7 @@ async function fetchWithTimeout(url, options = {}, timeoutMs = 8000) {
 }
 
 function setComposerEnabled(enabled) {
-  const available = enabled && authenticated && !sending;
+  const available = enabled && authenticated && Boolean(sessionId) && !sending;
   input.disabled = !available;
   sendButton.disabled = !available;
   quickActions.forEach((button) => { button.disabled = !available; });
@@ -57,6 +58,7 @@ function setAuthState(state, user = null, detail = "") {
     authGateTitle.textContent = "正在确认会员身份";
     authGateMessage.textContent = "请稍候，正在连接 Mall 会员服务。";
   } else if (state === "anonymous") {
+    sessionId = null;
     authStatusText.textContent = "Mall 未连接";
     authGate.hidden = false;
     authGateTitle.textContent = "请从 Mall 前台进入智能客服";
@@ -83,6 +85,8 @@ async function logoutMember() {
       headers: { Accept: "application/json" },
     });
     if (!response.ok) throw new Error("退出失败，请稍后重试。");
+    sessionId = null;
+    messages.replaceChildren();
     setAuthState("anonymous");
   } catch (error) {
     authStatus.className = "auth-status is-error";
@@ -106,11 +110,61 @@ async function checkAuthStatus() {
     if (!response.ok) throw new Error("Mall 会员服务暂时不可用。");
     const body = await response.json();
     setAuthState(body.authenticated ? "authenticated" : "anonymous", body.user);
+    if (body.authenticated) await resolveConversation();
   } catch (error) {
     const message = error.name === "AbortError" ? "认证状态检查请求超时，请重试。" : error.message;
     setAuthState("error", null, message);
   } finally {
     retryAuth.disabled = false;
+  }
+}
+
+function beginCleanConversation(conversationId) {
+  sessionId = conversationId;
+  messages.replaceChildren();
+  debugOutput.textContent = JSON.stringify({ conversation_id: conversationId }, null, 2);
+  addMessage("agent", "您好，我是商城智能客服。您可以直接告诉我想找的商品，或咨询订单、物流、退款和售后问题。");
+  setComposerEnabled(true);
+}
+
+async function createConversation() {
+  const response = await fetchWithTimeout("/api/conversations", {
+    method: "POST",
+    credentials: "include",
+    headers: { Accept: "application/json" },
+  });
+  if (!response.ok) throw new Error("暂时无法创建新会话，请稍后重试。");
+  const conversation = await response.json();
+  beginCleanConversation(conversation.conversation_id);
+}
+
+async function resolveConversation() {
+  sessionId = null;
+  setComposerEnabled(false);
+  const response = await fetchWithTimeout("/api/conversations/active", {
+    credentials: "include",
+    headers: { Accept: "application/json" },
+  });
+  if (response.status === 404) {
+    await createConversation();
+    return;
+  }
+  if (!response.ok) throw new Error("暂时无法恢复会话，请稍后重试。");
+  const conversation = await response.json();
+  beginCleanConversation(conversation.conversation_id);
+}
+
+async function startNewConversation() {
+  if (!authenticated || sending) return;
+  newConversationButton.disabled = true;
+  setComposerEnabled(false);
+  try {
+    await createConversation();
+  } catch (error) {
+    addMessage("agent", error.name === "AbortError" ? "创建会话超时，请稍后重试。" : error.message);
+  } finally {
+    newConversationButton.disabled = false;
+    setComposerEnabled(true);
   }
 }
 
@@ -186,14 +240,25 @@ async function sendMessage(message) {
         debugOutput.textContent = JSON.stringify(data, null, 2);
       } else if (eventName === "error") {
         if (data.status === 401) setAuthState("anonymous");
-        throw new Error(data.detail || "请求失败，请稍后重试。");
+        const error = new Error(data.detail || "请求失败，请稍后重试。");
+        error.code = data.code;
+        throw error;
       }
       messages.scrollTop = messages.scrollHeight;
     });
     if (!reply) agentMessage.textContent = "暂时没有可展示的回复，请稍后重试。";
   } catch (error) {
     agentMessage.classList.remove("is-loading");
-    agentMessage.textContent = error.name === "AbortError" ? "请求超时，请稍后重试。" : error.message;
+    if (error.code === "conversation_expired") {
+      try {
+        await resolveConversation();
+        addMessage("agent", "刚才的会话已经结束。为避免重复提交退款等操作，请您手动重新发送上一条消息。");
+      } catch (conversationError) {
+        agentMessage.textContent = conversationError.message;
+      }
+    } else {
+      agentMessage.textContent = error.name === "AbortError" ? "请求超时，请稍后重试。" : error.message;
+    }
   } finally {
     sending = false;
     setComposerEnabled(authenticated);
@@ -212,6 +277,6 @@ quickActions.forEach((button) => {
 
 retryAuth.addEventListener("click", checkAuthStatus);
 logoutButton.addEventListener("click", logoutMember);
+newConversationButton.addEventListener("click", startNewConversation);
 
-addMessage("agent", "您好，我是商城智能客服。您可以直接告诉我想找的商品，或咨询订单、物流、退款和售后问题。");
 checkAuthStatus();

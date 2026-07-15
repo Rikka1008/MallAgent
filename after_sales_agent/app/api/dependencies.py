@@ -25,12 +25,17 @@ from services.memory.stores import MilvusBaseStore
 from config import EmbeddingConfig, MilvusConfig
 from services.memory.stores import PostgresBaseStore
 from services.cases.store import CaseService, PostgresCaseStore, RedisCaseStore
+from services.conversations.lifecycle import ConversationLifecycle
+from services.conversations.repository import ConversationRepository, RedisConversationRepository
+from services.conversations.finalization import ConversationFinalizer, ConversationSummarizer
 
 
 _gateway: EcommerceGateway | None = None
 _memory_store: PostgresBaseStore | None = None
 _semantic_memory_service: SemanticMemoryService | None = None
 _case_service: CaseService | None = None
+_conversation_lifecycle: ConversationLifecycle | None = None
+_conversation_finalizer: ConversationFinalizer | None = None
 
 
 def _resolve_auth_header(authorization: str | None, cookie_token: str | None) -> str | None:
@@ -101,6 +106,29 @@ async def get_case_service() -> CaseService:
     return _case_service
 
 
+async def get_conversation_lifecycle() -> ConversationLifecycle:
+    global _conversation_lifecycle
+    if _conversation_lifecycle is None:
+        engine = await SqlAlchemyPool.get()
+        _conversation_lifecycle = ConversationLifecycle(
+            repository=ConversationRepository(engine),
+            turns=RedisConversationRepository(),
+        )
+    return _conversation_lifecycle
+
+
+async def get_conversation_finalizer() -> ConversationFinalizer:
+    global _conversation_finalizer
+    if _conversation_finalizer is None:
+        lifecycle = await get_conversation_lifecycle()
+        _conversation_finalizer = ConversationFinalizer(
+            repository=lifecycle.repository,
+            turns=lifecycle.turns,
+            summarizer=ConversationSummarizer(),
+        )
+    return _conversation_finalizer
+
+
 async def get_checkpointer():
     return await checkpoint_manager.start()
 
@@ -138,9 +166,12 @@ async def get_semantic_memory_service() -> SemanticMemoryService:
 async def close_dependencies() -> None:
     """关闭所有依赖资源。"""
     global _memory_store, _semantic_memory_service, _case_service
+    global _conversation_lifecycle, _conversation_finalizer
     await SqlAlchemyPool.close()
     await RedisClient.close()
     await MilvusClient.close()
     _memory_store = None
     _semantic_memory_service = None
     _case_service = None
+    _conversation_lifecycle = None
+    _conversation_finalizer = None

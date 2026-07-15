@@ -9,10 +9,11 @@ from config.app import AppConfig  # noqa: E402
 from config.llm import LlmConfig  # noqa: E402
 from config.mall import MallConfig  # noqa: E402
 from config.rag import EmbeddingConfig, MilvusConfig, RagChunkConfig, RagConfig  # noqa: E402
-from config.storage import DatabaseConfig, RedisConfig  # noqa: E402
+from config.storage import ConversationConfig, DatabaseConfig, RedisConfig  # noqa: E402
 
 __all__ = [
     "AppConfig",
+    "ConversationConfig",
     "DatabaseConfig",
     "EmbeddingConfig",
     "ENV_LOADED",

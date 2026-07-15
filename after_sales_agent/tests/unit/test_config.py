@@ -54,8 +54,9 @@ def test_production_rejects_missing_external_services(monkeypatch):
         (MilvusConfig, "URI", "http://unit-test:19530"),
         (MallConfig, "PORTAL_BASE_URL", "https://mall.example.com"),
         (MallConfig, "ADMIN_BASE_URL", "https://mall-admin.example.com"),
-        (LlmConfig, "DEEPSEEK_API_KEY", "unit-deepseek-key"),
-        (LlmConfig, "DEEPSEEK_BASE_URL", "https://api.deepseek.example.com"),
+        (LlmConfig, "MODEL_NAME", "unit-model"),
+        (LlmConfig, "API_KEY", "unit-llm-key"),
+        (LlmConfig, "BASE_URL", "https://api.llm.example.com"),
     )
 
     for config_class, attr, value in valid_values:
@@ -66,8 +67,9 @@ def test_production_rejects_missing_external_services(monkeypatch):
         (MilvusConfig, "URI", "", "MILVUS_URI"),
         (MallConfig, "PORTAL_BASE_URL", "", "MALL_PORTAL_BASE_URL"),
         (MallConfig, "ADMIN_BASE_URL", "", "MALL_ADMIN_BASE_URL"),
-        (LlmConfig, "DEEPSEEK_API_KEY", None, "DEEPSEEK_API_KEY"),
-        (LlmConfig, "DEEPSEEK_BASE_URL", "", "DEEPSEEK_BASE_URL"),
+        (LlmConfig, "MODEL_NAME", "", "LLM_MODEL_NAME"),
+        (LlmConfig, "API_KEY", None, "LLM_API_KEY"),
+        (LlmConfig, "BASE_URL", "", "LLM_BASE_URL"),
     ):
         monkeypatch.setattr(config_class, attr, missing_value)
         with pytest.raises(RuntimeError, match=expected_name):
@@ -76,14 +78,14 @@ def test_production_rejects_missing_external_services(monkeypatch):
         monkeypatch.setattr(config_class, attr, original)
 
 
-def test_llm_config_exposes_separate_main_and_subagent_models():
+def test_llm_config_exposes_unified_main_and_subagent_model():
     from config.llm import LlmConfig
 
     main_config = LlmConfig.main_model_config()
     subagent_config = LlmConfig.subagent_model_config()
 
-    assert main_config["model"] == LlmConfig.DEEPSEEK_CHAT_MODEL
-    assert subagent_config["model"] == LlmConfig.DEEPSEEK_CHAT_MODEL
+    assert main_config["model"] == LlmConfig.MODEL_NAME
+    assert subagent_config["model"] == LlmConfig.MODEL_NAME
     assert "api_key" in main_config
     assert "base_url" in subagent_config
 

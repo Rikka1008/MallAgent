@@ -236,6 +236,14 @@ MALL_ADMIN_BASE_URL=http://localhost:8080
 .\.venv\Scripts\python.exe -m alembic upgrade head
 ```
 
+### 会话记忆策略
+
+- 页面刷新后，前端通过 `GET /api/conversations/active` 续接 30 分钟内仍活跃的服务端会话；点击“新会话”会关闭旧会话并创建新 ID。
+- Redis 保存活跃会话的 LangGraph checkpoint 与规范化问答轮次，滑动 TTL 为 120 分钟；PostgreSQL 的 `agent_conversations` 保存生命周期和最终业务摘要。
+- 会话空闲 30 分钟后由后台终结器关闭并生成摘要，摘要保留 90 天。新会话只注入最多 3 条摘要作为订单号、售后单号等定位线索，当前状态和金额仍会重新查询 Mall。
+- 前端不使用 `localStorage` 保存会话 ID，也不会在会话过期后自动重放退款、退货等写操作。
+- Mall MySQL 始终是订单和售后状态的事实来源；会话摘要不能替代 `oms_order_return_apply` 等业务表。
+
 ### 导入 RAG 知识库
 
 Agent 默认使用 `BAAI/bge-m3`。如果本机尚未缓存该模型，先把 `.env` 中下面两项设为 `0`，允许首次联网下载：

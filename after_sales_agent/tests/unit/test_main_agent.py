@@ -64,6 +64,7 @@ def test_main_agent_uses_runtime_context_and_six_subagents(monkeypatch):
     assert captured["checkpointer"] is fake_checkpointer
     assert captured["context_schema"].__name__ == "AgentRuntimeContext"
     assert captured["subagents"] == [{"model": fake_model}]
+    assert len(captured["middleware"]) == 1
 
 
 def test_graph_delegates_to_main_agent_builder(monkeypatch):

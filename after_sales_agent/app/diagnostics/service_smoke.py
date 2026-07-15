@@ -60,7 +60,18 @@ async def check_postgres(database_url: str) -> SmokeResult:
         async with engine.connect() as connection:
             await connection.execute(text("SELECT 1"))
             revision = await connection.scalar(text("SELECT version_num FROM alembic_version"))
-        return SmokeResult("postgres", True, {"alembic_revision": revision})
+            conversation_table = await connection.scalar(
+                text("SELECT to_regclass('public.agent_conversations')")
+            )
+        schema_ready = conversation_table == "agent_conversations"
+        return SmokeResult(
+            "postgres",
+            schema_ready,
+            {
+                "alembic_revision": revision,
+                "agent_conversations": schema_ready,
+            },
+        )
     except Exception as exc:
         return SmokeResult("postgres", False, {"error": type(exc).__name__})
     finally:

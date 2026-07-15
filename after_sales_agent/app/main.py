@@ -13,18 +13,27 @@ app_dir = Path(__file__).resolve().parent
 if str(app_dir) not in sys.path:
     sys.path.insert(0, str(app_dir))
 
-from api.dependencies import close_dependencies  # noqa: E402
+from api.dependencies import close_dependencies, get_conversation_finalizer  # noqa: E402
 from api.routes import router  # noqa: E402
-from config import MallConfig  # noqa: E402
+from config import ConversationConfig, DatabaseConfig, MallConfig  # noqa: E402
 from services.memory.checkpoint import checkpoint_manager  # noqa: E402
 
 
 @asynccontextmanager
 async def lifespan(_app: FastAPI):
+    ConversationConfig.validate()
     await checkpoint_manager.start()
-    yield
-    await checkpoint_manager.close()
-    await close_dependencies()
+    finalizer = None
+    if DatabaseConfig.DATABASE_URL:
+        finalizer = await get_conversation_finalizer()
+        finalizer.start()
+    try:
+        yield
+    finally:
+        if finalizer is not None:
+            await finalizer.stop()
+        await checkpoint_manager.close()
+        await close_dependencies()
 
 app = FastAPI(title="电商售后智能客服 Agent", version="0.1.0", lifespan=lifespan)
 app.add_middleware(

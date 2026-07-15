@@ -1,3 +1,5 @@
+from datetime import datetime
+
 from pydantic import BaseModel, ConfigDict, Field
 
 
@@ -40,3 +42,10 @@ class ChatResponse(BaseModel):
     missing_slots: list[str] = Field(description="仍需用户补充的槽位")
     tool_results_summary: dict = Field(description="工具调用结果摘要")
     handoff_required: bool = Field(description="是否需要转人工客服")
+
+
+class ConversationSessionResponse(BaseModel):
+    conversation_id: str = Field(description="服务端生成的会话编号")
+    status: str = Field(description="会话状态")
+    last_active_at: datetime = Field(description="最后成功对话时间")
+    created_at: datetime = Field(description="创建时间")

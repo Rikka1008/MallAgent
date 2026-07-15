@@ -16,4 +16,5 @@ class AgentRuntimeContext:
     authorization: str | None = None
     case_context: dict[str, Any] = field(default_factory=dict)
     long_term_memory: Any | None = None
+    conversation_summaries: list[str] = field(default_factory=list)
     idempotency_store: Any | None = None

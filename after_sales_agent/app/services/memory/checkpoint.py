@@ -28,7 +28,7 @@ class RedisCheckpointManager:
             raise RuntimeError("必须配置 REDIS_URL 才能启用 LangGraph 会话记忆")
         context = AsyncRedisSaver.from_conn_string(
             RedisConfig.REDIS_URL,
-            ttl={"default_ttl": RedisConfig.SESSION_TTL_SECONDS, "refresh_on_read": True},
+            ttl={"default_ttl": RedisConfig.CHECKPOINT_TTL_MINUTES, "refresh_on_read": True},
         )
         try:
             saver = await context.__aenter__()

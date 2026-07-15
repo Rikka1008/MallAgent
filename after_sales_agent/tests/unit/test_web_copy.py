@@ -67,6 +67,18 @@ def test_web_requests_have_timeout_and_restore_controls():
     assert "退出失败" in script
 
 
+def test_web_resolves_server_conversation_without_browser_persistence():
+    html = WEB_INDEX.read_text(encoding="utf-8")
+    script = WEB_APP.read_text(encoding="utf-8")
+
+    assert 'id="new-conversation-button"' in html
+    assert 'fetchWithTimeout("/api/conversations/active"' in script
+    assert 'fetchWithTimeout("/api/conversations"' in script
+    assert "conversation_expired" in script
+    assert "S-${Date.now()}" not in script
+    assert "localStorage" not in script
+
+
 def test_mall_member_login_bridges_token_to_agent_cookie():
     page = MALL_MEMBER_LOGIN.read_text(encoding="utf-8")
 
