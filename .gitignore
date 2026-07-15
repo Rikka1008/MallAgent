@@ -1,0 +1,38 @@
+# Local credentials and runtime configuration
+/after_sales_agent/.env
+
+# Python caches and generated data
+**/__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+**/data/rag_index/
+**/app/data/rag_index/
+
+# JavaScript dependencies and builds
+**/node_modules/
+**/dist/
+**/dist-ssr/
+**/coverage/
+
+# Java/Maven builds
+**/target/
+
+# Logs and runtime output
+*.log
+/output/
+/.uploads/
+
+# Local agent/tool state
+/.agents/
+/.superpowers/
+/.codex/
+
+# IDE and OS files
+.idea/
+.vscode/
+*.iml
+*.swp
+*.swo
+.DS_Store
+Thumbs.db

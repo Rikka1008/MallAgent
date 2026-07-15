@@ -1,0 +1,88 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="color-scheme" content="light" />
+    <title>商城智能客服</title>
+    <link rel="stylesheet" href="/static/styles.css?v=20260714-wide-card" />
+  </head>
+  <body data-auth-state="checking">
+    <div class="page-shell">
+      <header class="topbar">
+        <a class="brand" href="/" aria-label="商城智能客服首页">
+          <span class="brand-mark" aria-hidden="true">AI</span>
+          <span>
+            <strong>商城智能客服</strong>
+            <small>专业、可信的购物服务助手</small>
+          </span>
+        </a>
+        <div id="auth-status" class="auth-status is-checking" role="status" aria-live="polite">
+          <span class="status-dot" aria-hidden="true"></span>
+          <span id="auth-status-text">正在检查 Mall 登录状态</span>
+          <span id="auth-user" class="auth-user" hidden></span>
+          <button id="logout-button" class="logout-button" type="button" hidden>退出</button>
+        </div>
+      </header>
+
+      <main class="workspace">
+        <section class="chat-card" aria-labelledby="chat-title">
+          <div class="chat-heading">
+            <div>
+              <p class="eyebrow">智能服务中心</p>
+              <h1 id="chat-title">您好，我能为您处理什么？</h1>
+              <p>支持商品推荐、订单、物流、退款、退换货和售后政策咨询。</p>
+            </div>
+            <span class="service-badge">Deep Agent</span>
+          </div>
+
+          <section id="auth-gate" class="auth-gate" aria-live="polite">
+            <div class="auth-gate-icon" aria-hidden="true">✓</div>
+            <div class="auth-gate-copy">
+              <strong id="auth-gate-title">正在确认会员身份</strong>
+              <span id="auth-gate-message">请稍候，正在连接 Mall 会员服务。</span>
+            </div>
+            <div class="auth-actions">
+              <button id="retry-auth" class="button button-secondary" type="button" hidden>重新检查</button>
+              <a id="mall-login-link" class="button button-primary" href="/api/auth/mall-login" hidden>前往 Mall 登录</a>
+            </div>
+          </section>
+
+          <div id="messages" class="messages" aria-live="polite" aria-label="对话消息"></div>
+
+          <div id="quick-actions" class="quick-actions" aria-label="常用问题">
+            <button type="button" data-message="请列出我的最近订单">查询订单</button>
+            <button type="button" data-message="帮我查询最新物流进度">物流进度</button>
+            <button type="button" data-message="我想申请退货或换货">申请售后</button>
+            <button type="button" data-message="请给我推荐合适的商品">商品推荐</button>
+          </div>
+
+          <form id="chat-form" class="composer">
+            <label class="sr-only" for="message-input">输入您的问题</label>
+            <input
+              id="message-input"
+              autocomplete="off"
+              placeholder="输入您的问题，例如：查询订单 ORD1001"
+              disabled
+            />
+            <button id="send-button" class="send-button" type="submit" disabled>
+              <span>发送</span>
+              <span aria-hidden="true">→</span>
+            </button>
+          </form>
+        </section>
+
+        <details class="debug-panel">
+          <summary>查看本次会话信息</summary>
+          <pre id="debug-output">{}</pre>
+        </details>
+      </main>
+
+      <footer class="page-footer">
+        <span>商城智能客服</span>
+        <span>仅依据商城真实数据提供服务</span>
+      </footer>
+    </div>
+    <script src="/static/app.js?v=20260714-workspace"></script>
+  </body>
+</html>

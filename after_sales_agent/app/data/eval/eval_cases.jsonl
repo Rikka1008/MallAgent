@@ -1,0 +1,5 @@
+{"message":"帮我查订单 ORD1001","expected_intent":"order_query","expected_text":"ORD1001"}
+{"message":"查一下 ORD1002 的物流","expected_intent":"logistics_query","expected_text":"运输中"}
+{"message":"我的退款多久到账，订单 ORD1001","expected_intent":"refund_query","expected_text":"退款"}
+{"message":"七天无理由退货规则是什么","expected_intent":"policy_query","expected_text":"7天无理由"}
+{"message":"我要退货，订单 ORD1001，商品 SKU1001，原因是七天无理由退货","expected_intent":"return_exchange","expected_text":"售后申请已提交"}

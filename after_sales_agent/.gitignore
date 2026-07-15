@@ -1,0 +1,29 @@
+# Python 缓存
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+*.egg-info/
+
+# 日志文件
+*.log
+uvicorn.err.log
+uvicorn.out.log
+
+# 环境变量
+.env
+
+# 数据产物（可重建）
+data/rag_index/
+app/data/rag_index/
+
+# 构建产物
+dist/
+build/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~

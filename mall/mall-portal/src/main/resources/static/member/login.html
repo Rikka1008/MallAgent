@@ -1,0 +1,100 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="referrer" content="no-referrer" />
+    <title>Mall 会员登录</title>
+    <style>
+      :root { color-scheme: light; font-family: Inter, "PingFang SC", "Microsoft YaHei", sans-serif; }
+      * { box-sizing: border-box; }
+      body { min-height: 100vh; margin: 0; display: grid; place-items: center; padding: 24px; color: #172033; background: #f4f7fb; }
+      main { width: min(420px, 100%); padding: 38px; border: 1px solid #dce3ee; border-radius: 18px; background: #fff; box-shadow: 0 20px 55px rgba(31, 51, 78, 0.1); }
+      .brand { display: flex; align-items: center; gap: 12px; margin-bottom: 30px; }
+      .brand-mark { width: 42px; height: 42px; display: grid; place-items: center; border-radius: 12px; color: #fff; background: #2563eb; font-weight: 800; }
+      h1 { margin: 0; font-size: 22px; }
+      .subtitle { margin: 5px 0 0; color: #718096; font-size: 13px; }
+      label { display: block; margin: 17px 0 7px; color: #445069; font-size: 13px; font-weight: 650; }
+      input { width: 100%; height: 46px; padding: 0 13px; border: 1px solid #cfd8e6; border-radius: 10px; outline: none; font-size: 15px; }
+      input:focus { border-color: #2563eb; box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.12); }
+      button { width: 100%; height: 46px; margin-top: 24px; border: 0; border-radius: 10px; color: #fff; background: #2563eb; font-weight: 750; cursor: pointer; }
+      button:hover:not(:disabled) { background: #1d4ed8; }
+      button:disabled { cursor: wait; opacity: 0.65; }
+      #message { min-height: 20px; margin: 14px 0 0; color: #c2413b; font-size: 13px; text-align: center; }
+      .security-note { margin: 24px 0 0; color: #8a96a8; font-size: 12px; line-height: 1.6; text-align: center; }
+    </style>
+  </head>
+  <body>
+    <main>
+      <div class="brand">
+        <div class="brand-mark">M</div>
+        <div>
+          <h1>Mall 会员登录</h1>
+          <p class="subtitle">登录后将安全返回智能客服</p>
+        </div>
+      </div>
+
+      <form id="login-form">
+        <label for="username">会员账号</label>
+        <input id="username" name="username" autocomplete="username" required />
+        <label for="password">密码</label>
+        <input id="password" name="password" type="password" autocomplete="current-password" required />
+        <button id="submit-button" type="submit">登录并返回智能客服</button>
+      </form>
+      <p id="message" role="alert" aria-live="polite"></p>
+      <p class="security-note">会员凭证仅用于本次登录，不会写入 URL 或浏览器本地存储。</p>
+    </main>
+
+    <script>
+      const form = document.querySelector("#login-form");
+      const submitButton = document.querySelector("#submit-button");
+      const message = document.querySelector("#message");
+
+      // 本地开发只允许回跳到固定的 Agent 端口，防止会员令牌被转发到任意站点。
+      function resolveAgentBaseUrl() {
+        const raw = new URLSearchParams(window.location.search).get("agent_base_url");
+        const url = new URL(raw || "http://localhost:8010");
+        const localHost = url.hostname === "localhost" || url.hostname === "127.0.0.1";
+        if (url.protocol !== "http:" || !localHost || url.port !== "8010") {
+          throw new Error("智能客服回跳地址无效，请从智能客服页面重新进入登录。 ");
+        }
+        return url.origin;
+      }
+
+      form.addEventListener("submit", async (event) => {
+        event.preventDefault();
+        submitButton.disabled = true;
+        message.textContent = "正在登录…";
+
+        try {
+          const body = new URLSearchParams(new FormData(form));
+          const loginResponse = await fetch("/sso/login", {
+            method: "POST",
+            headers: { "Content-Type": "application/x-www-form-urlencoded" },
+            body,
+          });
+          const loginResult = await loginResponse.json();
+          if (!loginResponse.ok || loginResult.code !== 200) {
+            throw new Error(loginResult.message || "账号或密码错误。");
+          }
+
+          const { token, tokenHead = "Bearer " } = loginResult.data || {};
+          if (!token) throw new Error("Mall 未返回有效会员令牌。");
+
+          const agentBaseUrl = resolveAgentBaseUrl();
+          const sessionResponse = await fetch(`${agentBaseUrl}/api/auth/session`, {
+            method: "POST",
+            credentials: "include",
+            headers: { Authorization: `${tokenHead}${token}` },
+          });
+          if (!sessionResponse.ok) throw new Error("智能客服会话建立失败，请稍后重试。");
+
+          window.location.replace(agentBaseUrl);
+        } catch (error) {
+          message.textContent = error.message || "登录失败，请稍后重试。";
+          submitButton.disabled = false;
+        }
+      });
+    </script>
+  </body>
+</html>
