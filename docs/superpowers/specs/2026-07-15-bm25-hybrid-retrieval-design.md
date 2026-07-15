@@ -12,13 +12,13 @@
 2. 继续使用 `jieba` 处理中文分词，保证语料和查询采用完全一致的预处理。
 3. 将清洗和分词规则分别收敛到 `cleaner.py` 与 `splitter.py`，检索器只负责索引和排名。
 4. 删除无效的 `RAG_ENABLE_RERANK` 配置，保持当前“始终尝试重排，失败回退 RRF”的实际行为。
-5. 审查向量检索链路的职责边界，并记录后续重构建议；本次不混入向量链路重构。
+5. 在 BM25 改造通过测试后，拆分向量检索链路中的职责越界代码。
+6. 统一查询 embedding 接口和 Milvus 客户端创建路径，同时保持上层检索工具接口兼容。
 
 ## 非目标
 
 - 不修改 Milvus collection schema 或重新入库。
 - 不调整 RRF 公式、BGE-M3 embedding 模型或 BGE reranker 模型。
-- 不在本次改动中拆分 `HybridRetriever`，以免 BM25 行为修改与向量架构重构相互干扰。
 - 不加入停用词表、同义词扩展或拼音检索。
 
 ## 依赖选择
@@ -95,29 +95,42 @@ Markdown/商品目录
 6. 配置测试：确认 `RagConfig` 不再暴露 `ENABLE_RERANK`。
 7. 回归测试：运行关键词、混合检索、融合、工具和配置相关单元测试。
 
-## 向量检索职责审查
+## 第二阶段：向量检索职责重构
+
+第二阶段必须在第一阶段 BM25 与配置测试通过后开始。重构不改变检索排序算法、collection schema、工具返回结构或降级语义。
 
 ### 发现 1：`HybridRetriever` 包含低层 Milvus 适配职责
 
 `HybridRetriever.search()` 当前同时负责编排关键词召回、获取 Milvus 客户端、检查 collection、生成查询向量、组织 SDK 搜索参数、解析 SDK 返回、RRF 融合、重排和降级记录。编排器直接依赖 Milvus 返回结构，使替换向量库或单独测试向量召回变得困难。
 
-后续建议增加 `MilvusVectorRetriever`，由它负责查询 embedding、Milvus 搜索和结果标准化；`HybridRetriever` 只依赖关键词与向量两个统一的 retriever 接口，并负责融合、重排和降级策略。
+新增 `knowledge/retrieval/vector_retriever.py`，提供 `MilvusVectorRetriever`。它负责查询 embedding、collection 存在性检查、Milvus 搜索参数和 SDK 结果标准化。`HybridRetriever` 只负责调用关键词与向量两个通道、RRF 融合、重排和降级策略。
+
+为兼容现有调用方，`HybridRetriever` 保留 `client`、`collection_name`、`dimension` 和 `vectorizer` 构造参数，并在未显式传入 `vector_retriever` 时用这些参数构建 `MilvusVectorRetriever`。测试和未来调用方可以直接注入统一的向量 retriever。
 
 ### 发现 2：查询 embedding 复用了入库记录接口
 
 查询检索和语义记忆当前通过构造临时 `DocumentChunk` 调用 `BgeM3Vectorizer.vectorize()`，随后从 `VectorRecord` 中取 embedding。这使查询侧不必要地依赖入库数据模型。
 
-后续建议给 `BgeM3Vectorizer` 增加 `embed_texts(texts: list[str]) -> list[list[float]]`。`vectorize()` 仅作为入库适配器，将 `DocumentChunk` 与 embedding 组合成 `VectorRecord`；查询检索和语义记忆直接调用 `embed_texts()`。
+给 `BgeM3Vectorizer` 增加 `embed_texts(texts: list[str]) -> list[list[float]]`。该方法负责模型调用、浮点转换和逐条维度校验。`vectorize()` 仅作为入库适配器，将 `DocumentChunk` 与 embedding 组合成 `VectorRecord`；`MilvusVectorRetriever` 与语义记忆直接调用 `embed_texts()`，不再构造临时 `DocumentChunk`。
 
 ### 发现 3：Milvus 客户端创建存在两套路径
 
 `core.database.MilvusClient` 管理应用级单例连接与关闭，而 `MilvusVectorStore` 又能根据 URI 自行创建客户端。两套路径的超时、生命周期和连接复用策略可能漂移。
 
-后续建议让 `MilvusVectorStore` 只接收注入的客户端或统一客户端工厂；独立入库脚本在组合根创建客户端并负责关闭。该调整需要覆盖脚本生命周期测试，单独实施更安全。
+给 `core.database.MilvusClient` 增加统一的 `create(uri, token, db_name, timeout)` 工厂；应用级 `get_client()` 继续管理单例，但内部复用该工厂。`MilvusVectorStore` 不再自行导入和创建 pymilvus 客户端，只接收注入客户端。独立入库脚本在组合根通过统一工厂创建客户端，并在结束时负责关闭。
+
+## 实施顺序
+
+1. 第一阶段：依赖、清洗/分词、`BM25Okapi` 检索器、配置删除与回归测试。
+2. 第一阶段测试通过并完成代码审查。
+3. 第二阶段：`embed_texts()`、`MilvusVectorRetriever`、精简 `HybridRetriever`、统一客户端创建与调用方迁移。
+4. 第二阶段测试通过并完成代码审查。
+5. 运行完整单元测试和静态检查。
 
 ## 风险与兼容性
 
 - `rank-bm25` 适用于当前规模较小、进程内加载的 Markdown 语料；语料显著增大时应评估专用稀疏检索引擎。
 - BM25 原始分数与旧的 0 到 1 命中比例不可直接比较，但现有 RRF 只使用候选名次，因而融合行为兼容。
 - 初始化时构建索引会增加少量启动/首次构造时间，但避免了每次查询重复索引。
-- 本次不改变已存在的用户工作区修改，也不修改向量链路行为。
+- 向量职责重构只移动边界并增加兼容适配，不改变现有向量检索、RRF、重排和降级行为。
+- 所有实现位于隔离工作树，不改变主工作区中已有的用户未提交修改。
