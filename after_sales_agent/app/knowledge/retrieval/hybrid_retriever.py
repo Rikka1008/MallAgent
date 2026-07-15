@@ -1,11 +1,7 @@
-from typing import Any
-
 from config import EmbeddingConfig, MilvusConfig
-from core.database.milvus_client import MilvusClient
-from knowledge.ingestion.models import DocumentChunk
-from knowledge.ingestion.vectorizer import BgeM3Vectorizer
 from knowledge.retrieval.reranker import BgeReranker
 from knowledge.retrieval.fusion import reciprocal_rank_fusion, stable_chunk_id
+from knowledge.retrieval.vector_retriever import MilvusVectorRetriever
 
 
 class HybridRetriever:
@@ -14,19 +10,26 @@ class HybridRetriever:
     """
     def __init__(
         self,
-        client: Any | None = None,
+        client=None,
         collection_name: str = MilvusConfig.COLLECTION,
         dimension: int = EmbeddingConfig.DIMENSION,
-        vectorizer: BgeM3Vectorizer | None = None,
+        vectorizer=None,
         reranker: BgeReranker | None = None,
         keyword_retriever=None,
+        vector_retriever=None,
     ):
         self.client = client
         self.collection_name = collection_name
         self.dimension = dimension
-        self.vectorizer = vectorizer or BgeM3Vectorizer(dimension=dimension)
+        self.vectorizer = vectorizer
         self.reranker = reranker or BgeReranker()
         self.keyword_retriever = keyword_retriever
+        self.vector_retriever = vector_retriever or MilvusVectorRetriever(
+            client=client,
+            collection_name=collection_name,
+            dimension=dimension,
+            vectorizer=vectorizer,
+        )
         self.degradation_events: list[dict] = []
 
     async def search(self, query: str, limit: int = 5) -> list[dict]:
@@ -43,18 +46,7 @@ class HybridRetriever:
         self.degradation_events = []
         keyword = self._keyword_search(normalized_query, limit) if self.keyword_retriever else []
         try:
-            # 获取 Milvus 客户端
-            client = self.client or await MilvusClient.get_client()
-            # 检查 collection 是否存在
-            if hasattr(client, "has_collection") and not await client.has_collection(
-                collection_name=self.collection_name
-            ):
-                raise RuntimeError(f"Milvus collection 不存在：{self.collection_name}")
-            # 计算查询向量
-            query_vector = self.vectorizer.vectorize([DocumentChunk(text=normalized_query, metadata={"chunk_id": "query"})])[0].embedding
-            # 搜索向量数据库返回的结果片段
-            raw_results = await client.search(collection_name=self.collection_name, data=[query_vector], anns_field="embedding", limit=limit, output_fields=["text", "metadata", "chunk_id"])
-            vector = self._normalize_results(raw_results)
+            vector = await self.vector_retriever.search(normalized_query, limit=limit)
         except Exception as exc:
             if not self.keyword_retriever:
                 raise
@@ -81,22 +73,3 @@ class HybridRetriever:
             results.append({"title":item.title, "content":content, "score":float(item.score), "metadata":metadata,
                             "chunk_id":metadata.get("chunk_id") or stable_chunk_id(metadata.get("source_path", item.title), content)})
         return results
-
-    def _normalize_results(self, raw_results) -> list[dict]:
-        """把 pymilvus 异步客户端的搜索结果整理成 Agent 可直接使用的片段。"""
-        normalized: list[dict] = []
-        for result_group in raw_results or []:
-            for item in result_group:
-                entity = item.get("entity", {}) or {}
-                metadata = entity.get("metadata", {}) or {}
-                text = entity.get("text", "") or ""
-                title = metadata.get("title") or metadata.get("source_name") or "知识库片段"
-                normalized.append(
-                    {
-                        "title": title,
-                        "content": text,
-                        "score": float(item.get("distance", 0.0) or item.get("score", 0.0)),
-                        "metadata": metadata,
-                    }
-                )
-        return normalized
