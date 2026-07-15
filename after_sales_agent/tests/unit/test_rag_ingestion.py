@@ -3,12 +3,14 @@ from pathlib import Path
 import sys
 from types import SimpleNamespace
 
+from config import MilvusConfig
 from knowledge.ingestion.cleaner import clean_search_text, clean_text
 from knowledge.ingestion.loader import load_excel_qa_documents, load_source_documents
 from knowledge.ingestion.milvus_store import InMemoryVectorStore, MilvusVectorStore
 from knowledge.ingestion.pipeline import build_rag_documents
 from knowledge.ingestion.splitter import split_documents, tokenize_search_text
 from knowledge.ingestion.vectorizer import BgeM3Vectorizer
+from scripts import ingest_rag_sources
 
 
 class FakeBgeM3Model:
@@ -160,10 +162,9 @@ async def test_milvus_vector_store_calls_client_upsert():
 
     client = FakeMilvusClient()
     store = MilvusVectorStore(
-        uri="http://localhost:19530",
+        client=client,
         collection_name="test_collection",
         dimension=8,
-        client=client,
     )
     chunks = split_documents(
         [load_source_documents(Path("app/data/rag_sources/policies"))[0]],
@@ -174,6 +175,7 @@ async def test_milvus_vector_store_calls_client_upsert():
 
     inserted = await store.upsert(vectors)
 
+    assert store.client is client
     assert inserted == 1
     assert client.created is True
     assert client.inserted[0]["chunk_id"].startswith("chunk-")
@@ -197,11 +199,10 @@ async def test_milvus_vector_store_inserts_large_payload_in_batches():
 
     client = FakeMilvusClient()
     store = MilvusVectorStore(
-        uri="http://localhost:19530",
+        client=client,
         collection_name="test_collection",
         dimension=4,
         insert_batch_size=2,
-        client=client,
     )
     chunks = split_documents(
         [load_source_documents(Path("app/data/rag_sources/policies"))[0]],
@@ -214,6 +215,101 @@ async def test_milvus_vector_store_inserts_large_payload_in_batches():
 
     assert inserted == 5
     assert [len(batch) for batch in client.insert_batches] == [2, 2, 1]
+
+
+@pytest.mark.asyncio
+async def test_ingestion_script_injects_factory_client_and_closes_on_failure(
+    monkeypatch, tmp_path: Path
+):
+    create_calls = []
+
+    class FakeClient:
+        def __init__(self):
+            self.closed = False
+
+        async def close(self):
+            self.closed = True
+
+    client = FakeClient()
+
+    def fake_create(**kwargs):
+        create_calls.append(kwargs)
+        return client
+
+    async def fail_build_rag_documents(**kwargs):
+        assert kwargs["vector_store"].client is client
+        raise RuntimeError("ingestion failed")
+
+    monkeypatch.setattr(
+        ingest_rag_sources,
+        "MilvusClient",
+        SimpleNamespace(create=fake_create),
+        raising=False,
+    )
+    monkeypatch.setattr(ingest_rag_sources, "build_rag_documents", fail_build_rag_documents)
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        [
+            "ingest_rag_sources.py",
+            "--source-dir",
+            str(tmp_path),
+            "--collection",
+            "test_collection",
+            "--db-name",
+            "test_db",
+            "--dimension",
+            "4",
+        ],
+    )
+
+    with pytest.raises(RuntimeError, match="ingestion failed"):
+        await ingest_rag_sources.main()
+
+    assert create_calls == [
+        {
+            "uri": MilvusConfig.URI,
+            "token": MilvusConfig.TOKEN,
+            "db_name": "test_db",
+        }
+    ]
+    assert client.closed is True
+
+
+@pytest.mark.asyncio
+async def test_ingestion_script_dry_run_does_not_create_milvus_client(
+    monkeypatch, tmp_path: Path
+):
+    async def fake_build_rag_documents(**kwargs):
+        assert isinstance(kwargs["vector_store"], InMemoryVectorStore)
+        return SimpleNamespace(
+            loaded_documents=0,
+            created_chunks=0,
+            inserted_vectors=0,
+        )
+
+    def fail_create(**kwargs):
+        raise AssertionError("dry-run must not create a Milvus client")
+
+    monkeypatch.setattr(
+        ingest_rag_sources,
+        "MilvusClient",
+        SimpleNamespace(create=fail_create),
+        raising=False,
+    )
+    monkeypatch.setattr(ingest_rag_sources, "build_rag_documents", fake_build_rag_documents)
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        [
+            "ingest_rag_sources.py",
+            "--source-dir",
+            str(tmp_path),
+            "--dry-run",
+        ],
+    )
+
+    await ingest_rag_sources.main()
 
 
 def test_bge_m3_disables_fp16_without_cuda(monkeypatch):

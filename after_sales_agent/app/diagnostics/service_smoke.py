@@ -4,6 +4,8 @@ from dataclasses import asdict, dataclass
 from typing import Any
 import asyncio
 
+from core.database.milvus_client import MilvusClient as AsyncMilvusClientFactory
+
 
 @dataclass(eq=True)
 class SmokeResult:
@@ -133,9 +135,12 @@ async def check_milvus_async(
     client=None,
 ) -> SmokeResult:
     try:
-        from pymilvus import AsyncMilvusClient
-
-        client = client or AsyncMilvusClient(uri=uri, token=token, db_name=db_name, timeout=2)
+        client = client or AsyncMilvusClientFactory.create(
+            uri=uri,
+            token=token,
+            db_name=db_name,
+            timeout=2,
+        )
         exists = bool(await client.has_collection(collection_name=collection))
         detail: dict[str, Any] = {"collection": collection, "exists": exists}
         if exists:

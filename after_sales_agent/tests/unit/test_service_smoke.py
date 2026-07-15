@@ -1,7 +1,10 @@
 import asyncio
+import sys
+from types import SimpleNamespace
 
 import pytest
 
+from core.database.milvus_client import MilvusClient
 from diagnostics.service_smoke import (
     SmokeResult,
     check_milvus,
@@ -99,3 +102,47 @@ async def test_milvus_async_dimension_mismatch_is_failure():
     assert result.ok is False
     assert result.detail["dimension"] == 384
     assert result.detail["expected_dimension"] == 1024
+
+
+@pytest.mark.asyncio
+async def test_milvus_async_uses_unified_factory_when_client_is_not_injected(monkeypatch):
+    create_calls = []
+
+    class FakeAsyncMilvusClient:
+        async def has_collection(self, collection_name: str):
+            return True
+
+        async def describe_collection(self, collection_name: str):
+            return {"fields": []}
+
+    class ExplodingDirectClient:
+        def __init__(self, **kwargs):
+            raise AssertionError("AsyncMilvusClient must be created by MilvusClient.create")
+
+    def fake_create(cls, **kwargs):
+        create_calls.append(kwargs)
+        return FakeAsyncMilvusClient()
+
+    monkeypatch.setattr(MilvusClient, "create", classmethod(fake_create))
+    monkeypatch.setitem(
+        sys.modules,
+        "pymilvus",
+        SimpleNamespace(AsyncMilvusClient=ExplodingDirectClient),
+    )
+
+    result = await check_milvus_async(
+        "http://milvus",
+        "test-token",
+        "test-db",
+        "knowledge",
+    )
+
+    assert result.ok is True
+    assert create_calls == [
+        {
+            "uri": "http://milvus",
+            "token": "test-token",
+            "db_name": "test-db",
+            "timeout": 2,
+        }
+    ]

@@ -3,12 +3,10 @@ from types import SimpleNamespace
 
 import pytest
 
-from config import MilvusConfig
 from core.database.milvus_client import MilvusClient
 
 
-@pytest.mark.asyncio
-async def test_get_client_creates_and_caches_async_client(monkeypatch):
+def test_create_constructs_async_client_with_explicit_values(monkeypatch):
     created = []
 
     class FakeAsyncMilvusClient:
@@ -16,20 +14,43 @@ async def test_get_client_creates_and_caches_async_client(monkeypatch):
             created.append(kwargs)
 
     monkeypatch.setitem(sys.modules, "pymilvus", SimpleNamespace(AsyncMilvusClient=FakeAsyncMilvusClient))
+
+    client = MilvusClient.create(
+        uri="http://milvus.example:19530",
+        token="test-token",
+        db_name="test-db",
+        timeout=7,
+    )
+
+    assert isinstance(client, FakeAsyncMilvusClient)
+    assert created == [
+        {
+            "uri": "http://milvus.example:19530",
+            "token": "test-token",
+            "db_name": "test-db",
+            "timeout": 7,
+        }
+    ]
+
+
+@pytest.mark.asyncio
+async def test_get_client_delegates_to_create_once(monkeypatch):
+    client = object()
+    create_calls = []
+
+    def fake_create(cls):
+        create_calls.append(None)
+        return client
+
+    monkeypatch.setattr(MilvusClient, "create", classmethod(fake_create))
     monkeypatch.setattr(MilvusClient, "_client", None)
 
     first = await MilvusClient.get_client()
     second = await MilvusClient.get_client()
 
     assert first is second
-    assert created == [
-        {
-            "uri": MilvusConfig.URI,
-            "token": MilvusConfig.TOKEN,
-            "db_name": MilvusConfig.DB_NAME,
-            "timeout": 1,
-        }
-    ]
+    assert first is client
+    assert create_calls == [None]
 
 
 @pytest.mark.asyncio
