@@ -25,6 +25,7 @@ class KeywordPolicyRetriever:
             tokenize_search_text(f"{section.title}\n{section.content}")
             for section in self.sections
         ]
+        self._indexed_token_sets = [set(tokens) for tokens in tokenized_corpus]
         self._bm25 = BM25Okapi(tokenized_corpus) if any(tokenized_corpus) else None
 
     def search(self, query: str, limit: int = 3) -> list[PolicySnippet]:
@@ -33,10 +34,11 @@ class KeywordPolicyRetriever:
         if not tokens or self._bm25 is None:
             return []
 
+        query_terms = set(tokens)
         scored = [
             (index, float(score))
             for index, score in enumerate(self._bm25.get_scores(tokens))
-            if score > 0
+            if query_terms & self._indexed_token_sets[index]
         ]
         scored.sort(key=lambda item: (-item[1], item[0]))
         return [

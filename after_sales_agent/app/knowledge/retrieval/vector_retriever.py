@@ -1,3 +1,4 @@
+import asyncio
 from typing import Any
 
 from config import EmbeddingConfig, MilvusConfig
@@ -26,7 +27,8 @@ class MilvusVectorRetriever:
         ):
             raise RuntimeError(f"Milvus collection does not exist: {self.collection_name}")
 
-        query_vector = self.vectorizer.embed_texts([query])[0]
+        query_vectors = await asyncio.to_thread(self.vectorizer.embed_texts, [query])
+        query_vector = query_vectors[0]
         raw_results = await client.search(
             collection_name=self.collection_name,
             data=[query_vector],

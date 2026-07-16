@@ -21,7 +21,6 @@ class HybridRetriever:
         self.client = client
         self.collection_name = collection_name
         self.dimension = dimension
-        self.vectorizer = vectorizer
         self.reranker = reranker or BgeReranker()
         self.keyword_retriever = keyword_retriever
         self.vector_retriever = (
@@ -34,6 +33,7 @@ class HybridRetriever:
                 vectorizer=vectorizer,
             )
         )
+        self.vectorizer = getattr(self.vector_retriever, "vectorizer", vectorizer)
         self.degradation_events: list[dict] = []
 
     async def search(self, query: str, limit: int = 5) -> list[dict]:

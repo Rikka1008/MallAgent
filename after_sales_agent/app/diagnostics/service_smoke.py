@@ -134,13 +134,15 @@ async def check_milvus_async(
     expected_dimension: int | None = None,
     client=None,
 ) -> SmokeResult:
+    owns_client = client is None
     try:
-        client = client or AsyncMilvusClientFactory.create(
-            uri=uri,
-            token=token,
-            db_name=db_name,
-            timeout=2,
-        )
+        if owns_client:
+            client = AsyncMilvusClientFactory.create(
+                uri=uri,
+                token=token,
+                db_name=db_name,
+                timeout=2,
+            )
         exists = bool(await client.has_collection(collection_name=collection))
         detail: dict[str, Any] = {"collection": collection, "exists": exists}
         if exists:
@@ -159,3 +161,6 @@ async def check_milvus_async(
         return SmokeResult("milvus", exists and dimension_matches, detail)
     except Exception as exc:
         return SmokeResult("milvus", False, {"error": type(exc).__name__})
+    finally:
+        if owns_client and client is not None:
+            await client.close()

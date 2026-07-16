@@ -1,3 +1,5 @@
+import asyncio
+
 import pytest
 
 from knowledge.retrieval.vector_retriever import MilvusVectorRetriever
@@ -89,6 +91,30 @@ async def test_search_checks_collection_embeds_searches_and_normalizes_hits():
             "chunk_id": "chunk-2",
         },
     ]
+
+
+@pytest.mark.asyncio
+async def test_search_offloads_embedding_to_worker_thread(monkeypatch):
+    offload_calls = []
+
+    async def fake_to_thread(function, *args, **kwargs):
+        offload_calls.append((function, args, kwargs))
+        return function(*args, **kwargs)
+
+    monkeypatch.setattr(asyncio, "to_thread", fake_to_thread)
+    client = FakeMilvusClient()
+    vectorizer = FakeVectorizer()
+    retriever = MilvusVectorRetriever(
+        client=client,
+        collection_name="unit_collection",
+        dimension=4,
+        vectorizer=vectorizer,
+    )
+
+    await retriever.search("return", limit=2)
+
+    assert offload_calls == [(vectorizer.embed_texts, (["return"],), {})]
+    assert client.search_kwargs["data"] == [[0.1, 0.2, 0.3, 0.4]]
 
 
 @pytest.mark.asyncio

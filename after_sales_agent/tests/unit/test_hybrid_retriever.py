@@ -45,6 +45,24 @@ class IdentityReranker:
         return candidates
 
 
+def test_legacy_constructor_exposes_actual_vector_retriever_vectorizer():
+    retriever = HybridRetriever(reranker=IdentityReranker())
+
+    assert retriever.vectorizer is retriever.vector_retriever.vectorizer
+
+
+def test_injected_vector_retriever_exposes_its_vectorizer_on_hybrid_retriever():
+    vectorizer = FakeBgeM3Vectorizer()
+    vector_retriever = type("InjectedVectorRetriever", (), {"vectorizer": vectorizer})()
+
+    retriever = HybridRetriever(
+        vector_retriever=vector_retriever,
+        reranker=IdentityReranker(),
+    )
+
+    assert retriever.vectorizer is vectorizer
+
+
 @pytest.mark.asyncio
 async def test_hybrid_retriever_delegates_to_injected_vector_retriever():
     class FakeVectorRetriever:
