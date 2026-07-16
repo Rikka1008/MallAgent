@@ -13,7 +13,7 @@ MallAgent 是一个面向电商售后场景的完整源码项目。它在开源 
 | `after_sales_agent/` | 售后智能客服、RAG、记忆和商城工具调用 | Python 3.13、FastAPI、LangGraph、Milvus |
 | `ops/vm-dependencies/` | 本地开发所需的统一基础设施 | Docker Compose |
 
-`migrations/`、`scripts/` 和 `tests/` 是完整源码仓库的一部分，分别用于数据库演进、运维/数据导入和自动化测试，不应删除。
+`after_sales_agent/scripts/` 和 `after_sales_agent/tests/` 是完整源码仓库的一部分，分别包含数据库迁移与运维脚本、单元测试与冒烟测试，不应删除。
 
 ## 整体架构
 
@@ -391,7 +391,7 @@ docker compose up -d --force-recreate elasticsearch
 
 ```powershell
 docker compose ps
-python scripts\smoke_test_services.py
+python tests\smoke\smoke_test_services.py
 ```
 
 常见原因包括 `.env` 中模型密钥无效、Redis 密码不一致、尚未执行 Alembic、Milvus 仍在启动或商城 API 未启动。
@@ -412,7 +412,7 @@ docker compose up -d mysql redis postgres mongodb rabbitmq minio etcd milvus
 
 - 不提交 `after_sales_agent/.env`、模型密钥、Cookie、JWT 或数据库备份；
 - 不提交 `logs/`、`.ruff_cache/`、`.pytest_cache/`、`node_modules/`、`target/`、`dist/`、`build/`；
-- `migrations/`、`scripts/`、`tests/`、SQL 和 RAG 原始数据属于源码，应保留；
+- `scripts/migrations/`、`scripts/`、`tests/`、SQL 和 RAG 原始数据属于源码，应保留；
 - 本地开发默认密码不可直接用于公网或生产环境；
 - 对外部署必须增加 TLS、网络访问控制、最小权限账号、密钥管理和数据备份。
 
@@ -423,7 +423,7 @@ docker compose up -d mysql redis postgres mongodb rabbitmq minio etcd milvus
 - [统一基础设施 Compose](ops/vm-dependencies/docker-compose.yml)
 - [Agent 环境变量示例](after_sales_agent/.env.example)
 - [商城数据库脚本](mall/document/sql/)
-- [Agent PostgreSQL 迁移](after_sales_agent/migrations/)
+- [Agent PostgreSQL 迁移](after_sales_agent/scripts/migrations/)
 - [Agent 运维与导入脚本](after_sales_agent/scripts/)
 - [Agent 自动化测试](after_sales_agent/tests/)
 

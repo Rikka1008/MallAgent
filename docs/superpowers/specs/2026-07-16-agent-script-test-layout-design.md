@@ -37,4 +37,3 @@ after_sales_agent/
 - 先让目录布局测试因旧路径失败，再执行文件移动和引用更新。
 - 运行迁移测试、冒烟相关单元测试和全量 Pytest。
 - 运行 Alembic 离线编译、Ruff、Python 语法编译和 `git diff --check`。
-

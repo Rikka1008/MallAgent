@@ -1,4 +1,5 @@
 import asyncio
+from pathlib import Path
 
 import pytest
 
@@ -10,6 +11,16 @@ from diagnostics.service_smoke import (
     run_rag_check,
     run_with_timeout,
 )
+
+
+def test_smoke_entrypoints_live_under_tests():
+    project_root = Path(__file__).resolve().parents[2]
+    smoke_dir = project_root / "tests/smoke"
+
+    assert (smoke_dir / "smoke_test_services.py").is_file()
+    assert (smoke_dir / "smoke_test_idempotency.py").is_file()
+    assert not (project_root / "scripts/smoke_test_services.py").exists()
+    assert not (project_root / "scripts/smoke_test_idempotency.py").exists()
 
 
 class FakeRetriever:

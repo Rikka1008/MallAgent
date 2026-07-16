@@ -3,7 +3,10 @@ from pathlib import Path
 
 def test_memory_migration_owns_agent_memories_schema():
     project_root = Path(__file__).resolve().parents[2]
-    revision = project_root / "migrations/versions/20260712_01_create_agent_memories.py"
+    migrations = project_root / "scripts/migrations"
+    assert migrations.is_dir()
+    assert not (project_root / "migrations").exists()
+    revision = migrations / "versions/20260712_01_create_agent_memories.py"
 
     content = revision.read_text(encoding="utf-8")
 
@@ -23,7 +26,7 @@ def test_memory_store_does_not_create_schema_at_runtime():
 
 def test_case_migration_owns_case_snapshot_schema():
     project_root = Path(__file__).resolve().parents[2]
-    revision = project_root / "migrations/versions/20260713_02_create_after_sales_cases.py"
+    revision = project_root / "scripts/migrations/versions/20260713_02_create_after_sales_cases.py"
 
     content = revision.read_text(encoding="utf-8")
 
@@ -34,7 +37,7 @@ def test_case_migration_owns_case_snapshot_schema():
 
 def test_conversation_migration_owns_lifecycle_and_summary_schema():
     project_root = Path(__file__).resolve().parents[2]
-    revision = project_root / "migrations/versions/20260715_03_create_agent_conversations.py"
+    revision = project_root / "scripts/migrations/versions/20260715_03_create_agent_conversations.py"
 
     content = revision.read_text(encoding="utf-8")
 
