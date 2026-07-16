@@ -28,25 +28,38 @@ class BgeM3Vectorizer:
         self.max_length = max_length
         self._model = model
 
-    def vectorize(self, chunks: list[DocumentChunk]) -> list[VectorRecord]:
-        """把文本切片转换为 BGE-M3 向量记录。"""
+    def embed_texts(self, texts: list[str]) -> list[list[float]]:
+        """把文本转换为 BGE-M3 浮点向量。"""
 
-        if not chunks:
+        if not texts:
             return []
 
-        texts = [chunk.text for chunk in chunks]
         embeddings = self._encode(texts)
-        records: list[VectorRecord] = []
-        for chunk, embedding in zip(chunks, embeddings, strict=True):
+        if len(embeddings) != len(texts):
+            raise ValueError(
+                f"BGE-M3 应返回 {len(texts)} 个向量，实际得到 {len(embeddings)} 个。"
+            )
+
+        vectors: list[list[float]] = []
+        for embedding in embeddings:
             vector = [float(value) for value in embedding]
             if len(vector) != self.dimension:
                 raise ValueError(
                     f"BGE-M3 向量维度应为 {self.dimension}，实际得到 {len(vector)}。"
                 )
+            vectors.append(vector)
+        return vectors
+
+    def vectorize(self, chunks: list[DocumentChunk]) -> list[VectorRecord]:
+        """把文本切片转换为 BGE-M3 向量记录。"""
+
+        embeddings = self.embed_texts([chunk.text for chunk in chunks])
+        records: list[VectorRecord] = []
+        for chunk, embedding in zip(chunks, embeddings, strict=True):
             records.append(
                 VectorRecord(
                     text=chunk.text,
-                    embedding=vector,
+                    embedding=embedding,
                     metadata=chunk.metadata,
                 )
             )

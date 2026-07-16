@@ -14,7 +14,6 @@ def test_config_uses_simple_grouped_os_getenv(monkeypatch):
     monkeypatch.setenv("EMBEDDING_BATCH_SIZE", "8")
     monkeypatch.setenv("RAG_RETRIEVER", "milvus")
     monkeypatch.setenv("RAG_SEARCH_LIMIT", "7")
-    monkeypatch.setenv("RAG_ENABLE_RERANK", "true")
 
     import config
     import config.rag
@@ -34,7 +33,7 @@ def test_config_uses_simple_grouped_os_getenv(monkeypatch):
     assert config.EmbeddingConfig.BATCH_SIZE == 8
     assert config.RagConfig.RETRIEVER == "milvus"
     assert config.RagConfig.SEARCH_LIMIT == 7
-    assert config.RagConfig.ENABLE_RERANK is True
+    assert not hasattr(config.RagConfig, "ENABLE_RERANK")
     assert not hasattr(config, "AppSettings")
     assert not hasattr(config, "settings")
     assert not hasattr(config, "MILVUS_COLLECTION")

@@ -1,9 +1,10 @@
 from pathlib import Path
-import re
+
+from rank_bm25 import BM25Okapi
 
 from domain.models import PolicySnippet
 from knowledge.ingestion.loader import load_markdown_documents
-from knowledge.ingestion.splitter import split_markdown_sections
+from knowledge.ingestion.splitter import split_markdown_sections, tokenize_search_text
 
 
 class KeywordPolicyRetriever:
@@ -17,45 +18,33 @@ class KeywordPolicyRetriever:
         sections: list[PolicySnippet] | None = None,
         source_dir: Path | None = None,
     ):
-        self.sections = sections or load_policy_sections_from_rag_sources(source_dir)
+        self.sections = (
+            sections if sections is not None else load_policy_sections_from_rag_sources(source_dir)
+        )
+        tokenized_corpus = [
+            tokenize_search_text(f"{section.title}\n{section.content}")
+            for section in self.sections
+        ]
+        self._indexed_token_sets = [set(tokens) for tokens in tokenized_corpus]
+        self._bm25 = BM25Okapi(tokenized_corpus) if any(tokenized_corpus) else None
 
     def search(self, query: str, limit: int = 3) -> list[PolicySnippet]:
-        """按照关键词命中数量返回相关政策片段。"""
-        tokens = self._tokenize(query)
-        if not tokens:
+        """按照 BM25 分数返回相关政策片段。"""
+        tokens = tokenize_search_text(query)
+        if not tokens or self._bm25 is None:
             return []
-        scored: list[PolicySnippet] = []
-        for section in self.sections:
-            haystack = f"{section.title}\n{section.content}"
-            hit_count = sum(1 for token in tokens if token in haystack)
-            if query and query in haystack:
-                hit_count += 2
-            if hit_count > 0:
-                score = min(1.0, hit_count / max(len(tokens), 1))
-                scored.append(
-                    PolicySnippet(title=section.title, content=section.content, score=score)
-                )
 
-        scored.sort(key=lambda item: item.score, reverse=True)
-        return scored[:limit]
-
-    def _tokenize(self, query: str) -> list[str]:
-        """抽取轻量中文关键词。"""
-        normalized = re.sub(r"[\s，。！？、,.!?]+", " ", query.strip())
-        raw_tokens = [token for token in normalized.split(" ") if len(token) >= 2]
-        keywords = [
-            "七天",
-            "无理由",
-            "退货",
-            "换货",
-            "质量",
-            "退款",
-            "到账",
-            "运费",
-            "配件",
-            "二次销售",
+        query_terms = set(tokens)
+        scored = [
+            (index, float(score))
+            for index, score in enumerate(self._bm25.get_scores(tokens))
+            if query_terms & self._indexed_token_sets[index]
         ]
-        return sorted(set(raw_tokens + [word for word in keywords if word in query]))
+        scored.sort(key=lambda item: (-item[1], item[0]))
+        return [
+            self.sections[index].model_copy(update={"score": score})
+            for index, score in scored[:limit]
+        ]
 
 
 def load_policy_sections_from_rag_sources(source_dir: Path | None = None) -> list[PolicySnippet]:

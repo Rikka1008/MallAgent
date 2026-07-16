@@ -10,6 +10,7 @@ if str(app_dir) not in sys.path:
     sys.path.insert(0, str(app_dir))
 
 from config import EmbeddingConfig, MilvusConfig  # noqa: E402
+from core.database.milvus_client import MilvusClient  # noqa: E402
 from knowledge.ingestion.milvus_store import InMemoryVectorStore, MilvusVectorStore  # noqa: E402
 from knowledge.ingestion.pipeline import build_rag_documents  # noqa: E402
 from knowledge.ingestion.vectorizer import BgeM3Vectorizer  # noqa: E402
@@ -62,32 +63,39 @@ async def main() -> None:
         dimension=args.dimension,
         batch_size=args.batch_size,
     )
-    vector_store = (
-        InMemoryVectorStore()
-        if args.dry_run
-        else MilvusVectorStore(
-            uri=MilvusConfig.URI,
-            collection_name=args.collection,
-            dimension=args.dimension,
-            db_name=args.db_name,
-            token=MilvusConfig.TOKEN,
+    client = None
+    try:
+        if args.dry_run:
+            vector_store = InMemoryVectorStore()
+        else:
+            client = MilvusClient.create(
+                uri=MilvusConfig.URI,
+                token=MilvusConfig.TOKEN,
+                db_name=args.db_name,
+            )
+            vector_store = MilvusVectorStore(
+                client=client,
+                collection_name=args.collection,
+                dimension=args.dimension,
+            )
+        result = await build_rag_documents(
+            source_dir=Path(args.source_dir),
+            vectorizer=vectorizer,
+            vector_store=vector_store,
         )
-    )
-    result = await build_rag_documents(
-        source_dir=Path(args.source_dir),
-        vectorizer=vectorizer,
-        vector_store=vector_store,
-    )
-    print(
-        {
-            "loaded_documents": result.loaded_documents,
-            "created_chunks": result.created_chunks,
-            "inserted_vectors": result.inserted_vectors,
-            "dry_run": args.dry_run,
-            "db_name": args.db_name,
-            "collection": args.collection,
-        }
-    )
+        print(
+            {
+                "loaded_documents": result.loaded_documents,
+                "created_chunks": result.created_chunks,
+                "inserted_vectors": result.inserted_vectors,
+                "dry_run": args.dry_run,
+                "db_name": args.db_name,
+                "collection": args.collection,
+            }
+        )
+    finally:
+        if client is not None:
+            await client.close()
 
 
 if __name__ == "__main__":

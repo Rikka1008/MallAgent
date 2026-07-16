@@ -30,28 +30,22 @@ class MilvusVectorStore:
 
     def __init__(
         self,
-        uri: str,
+        client,
         collection_name: str,
         dimension: int,
-        db_name: str = "default",
-        token: str = "",
         insert_batch_size: int = 256,
-        client=None,
     ):
-        self.uri = uri
+        self.client = client
         self.collection_name = collection_name
         self.dimension = dimension
-        self.db_name = db_name
-        self.token = token
         self.insert_batch_size = insert_batch_size
-        self.client = client
 
     async def upsert(self, records: list[VectorRecord]) -> int:
         """写入 Milvus。"""
 
         if not records:
             return 0
-        client = self.client or await self._build_client()
+        client = self.client
         await self._ensure_collection(client)
         payload = [self._record_to_payload(record) for record in records]
         inserted = 0
@@ -65,15 +59,6 @@ class MilvusVectorStore:
         if hasattr(client, "flush"):
             await client.flush(collection_name=self.collection_name)
         return inserted
-
-    async def _build_client(self):
-        """创建 pymilvus 异步客户端。"""
-
-        try:
-            from pymilvus import AsyncMilvusClient
-        except ImportError as exc:
-            raise RuntimeError("请先安装 pymilvus，并启动 Milvus 服务。") from exc
-        return AsyncMilvusClient(uri=self.uri, token=self.token, db_name=self.db_name)
 
     async def _ensure_collection(self, client) -> None:
         """确保 collection 存在。

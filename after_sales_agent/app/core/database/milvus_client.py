@@ -16,19 +16,30 @@ class MilvusClient:
     _client: Any = None
 
     @classmethod
+    def create(
+        cls,
+        uri: str | None = None,
+        token: str | None = None,
+        db_name: str | None = None,
+        timeout: int = 1,
+    ) -> Any:
+        """创建一个独立的异步 Milvus 客户端。"""
+        try:
+            from pymilvus import AsyncMilvusClient
+        except ImportError as exc:
+            raise RuntimeError("请先安装 pymilvus，再使用 MilvusPool。") from exc
+        return AsyncMilvusClient(
+            uri=MilvusConfig.URI if uri is None else uri,
+            token=MilvusConfig.TOKEN if token is None else token,
+            db_name=MilvusConfig.DB_NAME if db_name is None else db_name,
+            timeout=timeout,
+        )
+
+    @classmethod
     async def get_client(cls) -> Any:
         """获取异步 Milvus 客户端。"""
         if cls._client is None:
-            try:
-                from pymilvus import AsyncMilvusClient
-            except ImportError as exc:
-                raise RuntimeError("请先安装 pymilvus，再使用 MilvusPool。") from exc
-            cls._client = AsyncMilvusClient(
-                uri=MilvusConfig.URI,
-                token=MilvusConfig.TOKEN,
-                db_name=MilvusConfig.DB_NAME,
-                timeout=1,
-            )
+            cls._client = cls.create()
         return cls._client
 
     @classmethod

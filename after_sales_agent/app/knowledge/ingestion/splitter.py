@@ -7,8 +7,15 @@ with warnings.catch_warnings():
     warnings.filterwarnings("ignore", message="pkg_resources is deprecated")
     import jieba
 
-from knowledge.ingestion.cleaner import clean_text
+from knowledge.ingestion.cleaner import clean_search_text, clean_text
 from knowledge.ingestion.models import DocumentChunk, SourceDocument
+
+
+def tokenize_search_text(text: str) -> list[str]:
+    normalized = clean_search_text(text)
+    if not normalized:
+        return []
+    return [token.strip() for token in jieba.lcut(normalized) if token.strip()]
 
 
 def split_documents(
