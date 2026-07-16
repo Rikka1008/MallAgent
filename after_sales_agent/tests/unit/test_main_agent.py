@@ -19,6 +19,14 @@ def test_main_prompt_routes_order_list_questions_to_order_agent():
     assert 'task("order_agent"' in main_agent.MAIN_SYSTEM_PROMPT
 
 
+def test_main_prompt_requires_complete_deterministic_order_list():
+    prompt = main_agent.MAIN_SYSTEM_PROMPT
+
+    assert "rendered_markdown" in prompt
+    assert "不得省略任何订单" in prompt
+    assert "不得只输出分组标题" in prompt
+
+
 def test_main_prompt_requires_context_complete_knowledge_retrieval_tasks():
     prompt = main_agent.MAIN_SYSTEM_PROMPT
 

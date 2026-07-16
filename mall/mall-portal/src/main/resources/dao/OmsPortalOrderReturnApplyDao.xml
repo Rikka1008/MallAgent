@@ -23,6 +23,17 @@
         ORDER BY create_time DESC
     </select>
 
+    <select id="listActiveByOrderSns" resultMap="portalReturnApplyResultMap">
+        SELECT * FROM oms_order_return_apply
+        WHERE member_id = #{memberId}
+          AND status IN (0, 1)
+          AND order_sn IN
+        <foreach collection="orderSns" item="orderSn" open="(" separator="," close=")">
+            #{orderSn}
+        </foreach>
+        ORDER BY create_time DESC
+    </select>
+
     <select id="getItem" resultMap="portalReturnApplyResultMap">
         SELECT * FROM oms_order_return_apply
         WHERE member_id = #{memberId} AND id = #{id}

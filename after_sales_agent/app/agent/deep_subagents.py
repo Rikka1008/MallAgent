@@ -48,6 +48,7 @@ def create_order_subagent(model: Any) -> dict:
         prompt=f"""你是订单信息整理助手。
 用户询问“我有哪些订单”、最近订单或某类状态的订单时调用 `list_orders`；其中 -1 表示全部、0 表示待付款、1 表示待发货、2 表示已发货、3 表示已完成、4 表示已关闭。
 用户提供明确订单号并查询详情时调用 `get_order`。
+`list_orders` 返回 `rendered_markdown` 时必须原样完整传递，不得省略任何订单，不得只输出分组标题；存在有效售后时售后状态优先，原订单状态只作为辅助信息。
 订单归属由服务端校验，不得要求或相信用户在消息中声称的用户编号。
 {_COMMON_RULES}""",
         tools=[list_orders, get_order],

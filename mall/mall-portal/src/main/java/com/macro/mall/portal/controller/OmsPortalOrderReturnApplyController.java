@@ -47,6 +47,14 @@ public class OmsPortalOrderReturnApplyController {
         return CommonResult.success(CommonPage.restPage(list));
     }
 
+    @Operation(summary = "批量查询当前用户订单的活动售后申请")
+    @RequestMapping(value = "/activeByOrders", method = RequestMethod.GET)
+    @ResponseBody
+    public CommonResult<List<OmsOrderReturnApply>> listActiveByOrderSns(
+            @RequestParam("orderSns") List<String> orderSns) {
+        return CommonResult.success(returnApplyService.listActiveByOrderSns(orderSns));
+    }
+
     @Operation(summary = "查询当前用户售后申请详情")
     @RequestMapping(value = "/{id}", method = RequestMethod.GET)
     @ResponseBody

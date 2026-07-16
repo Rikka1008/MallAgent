@@ -18,10 +18,13 @@ import org.mockito.junit.jupiter.MockitoExtension;
 
 import java.math.BigDecimal;
 import java.util.Collections;
+import java.util.Arrays;
+import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertInstanceOf;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 @ExtendWith(MockitoExtension.class)
@@ -87,5 +90,22 @@ class OmsPortalOrderReturnApplyServiceImplTests {
         assertEquals("测试商品", created.getProductName());
         assertEquals(new BigDecimal("359.00"), created.getReturnAmount());
         assertEquals("return", created.getClass().getMethod("getApplyType").invoke(created));
+    }
+
+    @Test
+    void listActiveByOrderSnsUsesCurrentMemberAndBoundedOrderNumbers() {
+        UmsMember member = new UmsMember();
+        member.setId(100L);
+        when(memberService.getCurrentMember()).thenReturn(member);
+        List<String> orderSns = Arrays.asList("ORD1001", "ORD1002");
+        OmsOrderReturnApply activeApply = new OmsOrderReturnApply();
+        activeApply.setId(9001L);
+        when(returnApplyDao.listActiveByOrderSns(100L, orderSns))
+                .thenReturn(Collections.singletonList(activeApply));
+
+        List<OmsOrderReturnApply> result = service.listActiveByOrderSns(orderSns);
+
+        assertEquals(Collections.singletonList(activeApply), result);
+        verify(returnApplyDao).listActiveByOrderSns(100L, orderSns);
     }
 }

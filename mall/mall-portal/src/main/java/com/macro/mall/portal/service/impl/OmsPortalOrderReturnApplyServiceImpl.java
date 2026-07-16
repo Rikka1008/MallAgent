@@ -17,8 +17,10 @@ import org.springframework.util.StringUtils;
 
 import java.math.BigDecimal;
 import java.util.Arrays;
+import java.util.Collections;
 import java.util.Date;
 import java.util.List;
+import java.util.stream.Collectors;
 
 @Service
 public class OmsPortalOrderReturnApplyServiceImpl implements OmsPortalOrderReturnApplyService {
@@ -113,6 +115,25 @@ public class OmsPortalOrderReturnApplyServiceImpl implements OmsPortalOrderRetur
     public List<OmsOrderReturnApply> list(String orderSn, Integer pageSize, Integer pageNum) {
         PageHelper.startPage(pageNum, pageSize);
         return returnApplyDao.list(memberService.getCurrentMember().getId(), orderSn);
+    }
+
+    @Override
+    public List<OmsOrderReturnApply> listActiveByOrderSns(List<String> orderSns) {
+        if (orderSns == null || orderSns.isEmpty()) {
+            return Collections.emptyList();
+        }
+        List<String> normalizedOrderSns = orderSns.stream()
+                .filter(StringUtils::hasText)
+                .distinct()
+                .collect(Collectors.toList());
+        if (normalizedOrderSns.isEmpty()) {
+            return Collections.emptyList();
+        }
+        if (normalizedOrderSns.size() > 20) {
+            Asserts.fail("单次最多查询20个订单的售后状态");
+        }
+        return returnApplyDao.listActiveByOrderSns(
+                memberService.getCurrentMember().getId(), normalizedOrderSns);
     }
 
     @Override

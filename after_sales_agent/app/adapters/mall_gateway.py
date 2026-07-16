@@ -37,6 +37,7 @@ class MallEcommerceGateway:
         2: "已完成",
         3: "已拒绝",
     }
+    ACTIVE_AFTER_SALES_STATUSES = {0, 1}
 
     def __init__(
         self,
@@ -98,12 +99,26 @@ class MallEcommerceGateway:
                 "pageSize": safe_size,
             },
         )
+        order_items = (data or {}).get("list") or []
+        order_sns = [str(item["orderSn"]) for item in order_items if item.get("orderSn")]
+        return_applies = await self._fetch_active_return_applies(order_sns)
+        applies_by_order = self._index_latest_return_applies(return_applies, user_id)
         orders = []
-        for item in (data or {}).get("list") or []:
-            order = self._map_order(item, user_id)
+        for item in order_items:
+            return_apply = self._find_return_apply(item, applies_by_order)
+            order = self._map_order(item, user_id, return_apply=return_apply)
             public_order_id = item.get("orderSn") or item.get("id")
             orders.append(order.model_copy(update={"order_id": str(public_order_id)}))
         return orders
+
+    async def _fetch_active_return_applies(self, order_sns: list[str]) -> list[dict]:
+        if not order_sns:
+            return []
+        data = await self._get_common_result(
+            f"{self.portal_base_url}/returnApply/activeByOrders",
+            params={"orderSns": ",".join(order_sns[:20])},
+        )
+        return list(data or [])
 
     async def get_logistics(
         self, order_id: str | None, tracking_no: str | None, user_id: str
@@ -268,19 +283,89 @@ class MallEcommerceGateway:
             raise RuntimeError(payload.get("message") or "mall 接口调用失败")
         return payload.get("data")
 
-    def _map_order(self, data: dict, user_id: str) -> Order:
+    def _map_order(
+        self, data: dict, user_id: str, return_apply: dict | None = None
+    ) -> Order:
         status = data.get("status")
+        order_status = self.ORDER_STATUS_TEXT.get(status, str(status or "未知状态"))
+        active_return_apply = (
+            return_apply
+            if return_apply and return_apply.get("status") in self.ACTIVE_AFTER_SALES_STATUSES
+            else None
+        )
         return Order(
             order_id=str(data.get("id") or data.get("orderSn")),
             user_id=user_id,
-            status=self.ORDER_STATUS_TEXT.get(status, str(status or "未知状态")),
+            status=(
+                self._active_after_sales_display_status(active_return_apply)
+                if active_return_apply
+                else order_status
+            ),
+            order_status=order_status,
             payment_status=self._payment_status_text(data),
             shipment_status=self._shipment_status_text(status),
+            after_sales_id=(
+                str(active_return_apply.get("id") or active_return_apply.get("returnApplyId") or "")
+                if active_return_apply
+                else None
+            ),
+            after_sales_type=(
+                str(active_return_apply.get("applyType") or "return")
+                if active_return_apply
+                else None
+            ),
+            after_sales_status=(
+                self.REFUND_STATUS_TEXT.get(
+                    active_return_apply.get("status"),
+                    str(active_return_apply.get("status") or "未知状态"),
+                )
+                if active_return_apply
+                else None
+            ),
             created_at=str(data.get("createTime") or ""),
             paid_at=self._optional_text(data.get("paymentTime")),
             delivered_at=self._optional_text(data.get("receiveTime")),
             items=[self._map_order_item(item) for item in data.get("orderItemList", []) or []],
         )
+
+    def _index_latest_return_applies(
+        self, return_applies: list[dict], user_id: str
+    ) -> dict[str, dict]:
+        applies_by_order: dict[str, dict] = {}
+        for apply in return_applies:
+            if not self._belongs_to_user(apply, user_id):
+                continue
+            for value in (apply.get("orderSn"), apply.get("orderId")):
+                if value is not None:
+                    key = str(value)
+                    existing = applies_by_order.get(key)
+                    candidate_is_active = apply.get("status") in self.ACTIVE_AFTER_SALES_STATUSES
+                    existing_is_active = (
+                        existing is not None
+                        and existing.get("status") in self.ACTIVE_AFTER_SALES_STATUSES
+                    )
+                    if existing is None or (candidate_is_active and not existing_is_active):
+                        applies_by_order[key] = apply
+        return applies_by_order
+
+    def _find_return_apply(
+        self, order: dict, applies_by_order: dict[str, dict]
+    ) -> dict | None:
+        for value in (order.get("orderSn"), order.get("id")):
+            if value is not None and str(value) in applies_by_order:
+                return applies_by_order[str(value)]
+        return None
+
+    def _active_after_sales_display_status(self, return_apply: dict) -> str:
+        apply_type = str(return_apply.get("applyType") or "return")
+        status = return_apply.get("status")
+        if apply_type == "refund":
+            return "退款处理中"
+        if apply_type == "exchange":
+            return "换货处理中"
+        if status == 1:
+            return "退货中"
+        return "售后处理中"
 
     def _map_order_item(self, item: dict) -> OrderItem:
         return OrderItem(

@@ -4,7 +4,7 @@ from agent.context import AgentRuntimeContext
 from tests.fakes import FakeEcommerceGateway
 from agent.models import AgentPlan
 from agent.state import AgentState
-from domain.models import CurrentMember
+from domain.models import CurrentMember, Order, OrderItem
 from tools.after_sales_tools import (
     MemoryIdempotencyStore,
     RedisIdempotencyStore,
@@ -64,6 +64,37 @@ async def test_list_orders_tool_returns_current_users_recent_orders():
         "ORD1002",
         "ORD1001",
     ]
+    assert result["rendered_markdown"].count("ORD1001") == 1
+    assert result["rendered_markdown"].count("ORD1002") == 1
+    assert result["message"] == result["rendered_markdown"]
+
+
+def test_render_order_list_includes_every_closed_order_row():
+    orders = [
+        Order(
+            order_id=f"CLOSED-{index}",
+            user_id="U100",
+            status="已关闭",
+            payment_status="未支付",
+            shipment_status="已关闭",
+            created_at=f"2026-07-{index:02d} 10:00:00",
+            items=[
+                OrderItem(
+                    product_id=f"SKU-{index}",
+                    product_name=f"商品{index}",
+                    quantity=1,
+                    price=100.0 * index,
+                )
+            ],
+        )
+        for index in range(1, 6)
+    ]
+
+    rendered = order_tools._render_orders_markdown(orders)
+
+    assert "已关闭（5笔）" in rendered
+    for index in range(1, 6):
+        assert rendered.count(f"CLOSED-{index}") == 1
 
 
 async def test_list_orders_tool_filters_by_mall_order_status():

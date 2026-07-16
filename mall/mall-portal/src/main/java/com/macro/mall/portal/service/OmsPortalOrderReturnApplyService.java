@@ -17,5 +17,7 @@ public interface OmsPortalOrderReturnApplyService {
 
     List<OmsOrderReturnApply> list(String orderSn, Integer pageSize, Integer pageNum);
 
+    List<OmsOrderReturnApply> listActiveByOrderSns(List<String> orderSns);
+
     OmsOrderReturnApply getItem(Long id);
 }

@@ -75,6 +75,16 @@ def test_refund_prompt_explains_discount_instead_of_reporting_false_mismatch(mon
     assert "不得将原价与申请退款金额直接比较" in prompt
 
 
+def test_order_prompt_preserves_deterministic_list_and_after_sales_status(monkeypatch):
+    monkeypatch.setattr(deep_subagents, "create_agent", lambda **kwargs: kwargs)
+
+    prompt = deep_subagents.build_subagents(model=object())[1]["runnable"]["system_prompt"]
+
+    assert "rendered_markdown" in prompt
+    assert "不得省略任何订单" in prompt
+    assert "售后状态优先" in prompt
+
+
 def test_knowledge_subagents_rewrite_query_before_search(monkeypatch):
     monkeypatch.setattr(deep_subagents, "create_agent", lambda **kwargs: kwargs)
 

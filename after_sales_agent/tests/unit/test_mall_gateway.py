@@ -252,6 +252,24 @@ class FakeMallClient:
                     },
                 }
             )
+        if url.endswith("/returnApply/activeByOrders"):
+            return FakeResponse(
+                {
+                    "code": 200,
+                    "data": [
+                        {
+                            "id": 9001,
+                            "orderId": 1001,
+                            "orderSn": "ORD1001",
+                            "memberUsername": "U100",
+                            "memberId": 100,
+                            "applyType": "return",
+                            "status": 1,
+                            "returnAmount": 399.0,
+                        }
+                    ],
+                }
+            )
         raise AssertionError(f"unexpected GET {url}")
 
     async def post(self, url: str, **kwargs):
@@ -292,12 +310,158 @@ async def test_list_orders_uses_member_portal_and_maps_recent_orders():
 
     assert [order.order_id for order in orders] == ["ORD1001"]
     assert orders[0].user_id == "U100"
+    assert orders[0].status == "退货中"
+    assert orders[0].order_status == "已完成"
+    assert orders[0].after_sales_status == "退货中"
+    assert orders[0].after_sales_id == "9001"
     assert (
         "GET",
         "http://mall-portal/order/list",
         {"status": -1, "pageNum": 1, "pageSize": 10},
         None,
     ) in client.requests
+    assert (
+        "GET",
+        "http://mall-portal/returnApply/activeByOrders",
+        {"orderSns": "ORD1001"},
+        None,
+    ) in client.requests
+
+
+class ActiveRefundListClient:
+    async def get(self, url: str, **kwargs):
+        if url.endswith("/order/list"):
+            return FakeResponse(
+                {
+                    "code": 200,
+                    "data": {
+                        "list": [
+                            {
+                                "id": 68,
+                                "orderSn": "202301100100000003",
+                                "memberId": 1,
+                                "memberUsername": "1",
+                                "status": 1,
+                                "createTime": "2023-01-10 16:58:19",
+                                "orderItemList": [],
+                            }
+                        ]
+                    },
+                }
+            )
+        if url.endswith("/returnApply/list"):
+            return FakeResponse(
+                {
+                    "code": 200,
+                    "data": {
+                        "list": [
+                            {
+                                "id": 9002,
+                                "orderId": 68,
+                                "orderSn": "202301100100000003",
+                                "memberId": 1,
+                                "memberUsername": "1",
+                                "applyType": "refund",
+                                "status": 0,
+                                "createTime": "2026-07-15 10:00:00",
+                            }
+                        ]
+                    },
+                }
+            )
+        if url.endswith("/returnApply/activeByOrders"):
+            assert kwargs.get("params") == {"orderSns": "202301100100000003"}
+            return FakeResponse(
+                {
+                    "code": 200,
+                    "data": [
+                        {
+                            "id": 9002,
+                            "orderId": 68,
+                            "orderSn": "202301100100000003",
+                            "memberId": 1,
+                            "memberUsername": "1",
+                            "applyType": "refund",
+                            "status": 0,
+                        }
+                    ],
+                }
+            )
+        raise AssertionError(f"unexpected GET {url}")
+
+
+async def test_list_orders_promotes_active_refund_without_losing_order_status():
+    gateway = MallEcommerceGateway(
+        portal_base_url="http://mall-portal",
+        auth_header="Bearer member-token",
+        http_client=ActiveRefundListClient(),
+    )
+
+    orders = await gateway.list_orders(user_id="1", status=-1, page_size=20)
+
+    assert len(orders) == 1
+    assert orders[0].status == "退款处理中"
+    assert orders[0].order_status == "待发货"
+    assert orders[0].shipment_status == "待发货"
+    assert orders[0].after_sales_type == "refund"
+    assert orders[0].after_sales_status == "待处理"
+    assert orders[0].after_sales_id == "9002"
+
+
+class BoundedActiveReturnApplyClient(ActiveRefundListClient):
+    def __init__(self):
+        self.return_apply_requests = 0
+
+    async def get(self, url: str, **kwargs):
+        if url.endswith("/returnApply/list"):
+            raise AssertionError("order listing must not scan paginated return-apply history")
+        if url.endswith("/returnApply/activeByOrders"):
+            self.return_apply_requests += 1
+        return await super().get(url, **kwargs)
+
+
+async def test_list_orders_uses_one_bounded_active_return_apply_query():
+    client = BoundedActiveReturnApplyClient()
+    gateway = MallEcommerceGateway(
+        portal_base_url="http://mall-portal",
+        auth_header="Bearer member-token",
+        http_client=client,
+    )
+
+    orders = await gateway.list_orders(user_id="1", status=-1, page_size=20)
+
+    assert orders[0].status == "退款处理中"
+    assert orders[0].after_sales_id == "9002"
+    assert client.return_apply_requests == 1
+
+
+def test_return_apply_index_prefers_active_apply_over_newer_inactive_apply():
+    gateway = MallEcommerceGateway(http_client=FakeMallClient())
+    return_applies = [
+        {
+            "id": 9003,
+            "orderId": 68,
+            "orderSn": "202301100100000003",
+            "memberId": 1,
+            "memberUsername": "1",
+            "applyType": "refund",
+            "status": 3,
+        },
+        {
+            "id": 9002,
+            "orderId": 68,
+            "orderSn": "202301100100000003",
+            "memberId": 1,
+            "memberUsername": "1",
+            "applyType": "refund",
+            "status": 0,
+        },
+    ]
+
+    applies_by_order = gateway._index_latest_return_applies(return_applies, "1")
+
+    assert applies_by_order["202301100100000003"]["id"] == 9002
+    assert applies_by_order["68"]["id"] == 9002
 
 
 async def test_list_orders_limits_page_size_to_twenty():

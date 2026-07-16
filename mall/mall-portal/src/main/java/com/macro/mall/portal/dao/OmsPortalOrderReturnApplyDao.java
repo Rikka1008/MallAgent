@@ -12,5 +12,8 @@ public interface OmsPortalOrderReturnApplyDao {
     List<OmsOrderReturnApply> list(@Param("memberId") Long memberId,
                                    @Param("orderSn") String orderSn);
 
+    List<OmsOrderReturnApply> listActiveByOrderSns(@Param("memberId") Long memberId,
+                                                   @Param("orderSns") List<String> orderSns);
+
     OmsOrderReturnApply getItem(@Param("memberId") Long memberId, @Param("id") Long id);
 }
